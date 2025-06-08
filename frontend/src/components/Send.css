@@ -1,0 +1,52 @@
+.layout {
+  display: flex;
+  font-family: Arial, sans-serif;
+}
+
+.sidebar {
+  width: 220px;
+  background-color: #16376d;
+  color: white;
+  height: 100vh;
+  padding: 20px;
+}
+
+.sidebar .brand {
+  font-weight: bold;
+  font-size: 20px;
+  margin-bottom: 30px;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar li {
+  margin: 15px 0;
+}
+
+.sidebar li a {
+  color: white;
+  text-decoration: none;
+}
+
+.sidebar li.active a {
+  font-weight: bold;
+  color: #00aaff;
+}
+
+.main-content {
+  flex: 1;
+  padding: 40px;
+}
+
+.new-send-btn {
+  background-color: #175ddc;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  margin-top: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+}

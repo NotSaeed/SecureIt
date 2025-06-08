@@ -1,0 +1,40 @@
+.sidebar {
+  width: 220px;
+  background: #16376a;
+  color: white;
+  padding: 15px;
+  min-height: 100vh;
+}
+
+.sidebar h2 {
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+}
+
+.sidebar a {
+  display: block;
+  padding: 8px;
+  color: white;
+  text-decoration: none;
+  margin-bottom: 5px;
+}
+
+.sidebar a:hover {
+  background-color: #175DDC;
+}
+
+.settings-toggle {
+  background-color: #175DDC;
+  color: white;
+  border: none;
+  padding: 10px;
+  text-align: left;
+  font-weight: bold;
+  width: 100%;
+  cursor: pointer;
+}
+
+.settings-submenu a {
+  padding-left: 20px;
+  font-size: 0.9rem;
+}

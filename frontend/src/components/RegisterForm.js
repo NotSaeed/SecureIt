@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './RegisterForm.css';
+import { Link } from 'react-router-dom';
+
 
 function RegisterForm() {
   const [email, setEmail] = useState('');
@@ -68,9 +70,11 @@ function RegisterForm() {
             <button className="register-button">Continue</button>
           </form>
 
-          <p className="terms-text">
-            By continuing, you agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
-          </p>
+<p className="footer-text">
+  Already have an account? <Link to="/">Log in</Link>
+</p>
+
+
         </div>
 
         <footer className="register-footer">
