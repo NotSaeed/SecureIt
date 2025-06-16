@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirusTotal API Setup Guide - SecureIt</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .step {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #ff6b6b;
+        }
+
+        .step h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .step p, .step li {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .step ul {
+            margin-left: 20px;
+        }
+
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .highlight strong {
+            color: #856404;
+        }
+
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #00b894, #00a085);
+            color: white;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 10px 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+        }
+
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .feature-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            border: 2px solid #e9ecef;
+        }
+
+        .feature-item:hover {
+            border-color: #ff6b6b;
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+        }
+
+        .icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #ff6b6b;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .warning {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+            color: #cc0000;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ VirusTotal API Setup</h1>
+            <p>Enable real-time malware scanning for files and URLs</p>
+        </div>
+
+        <div class="content">
+            <div class="step">
+                <h3>Step 1: Create VirusTotal Account</h3>
+                <p>Visit the VirusTotal website and create a free account to get your API key.</p>
+                <a href="https://www.virustotal.com/gui/join-us" target="_blank" class="btn">Create VirusTotal Account</a>
+            </div>
+
+            <div class="step">
+                <h3>Step 2: Get Your API Key</h3>
+                <p>After creating your account:</p>
+                <ul>
+                    <li>Log in to your VirusTotal account</li>
+                    <li>Go to your profile settings</li>
+                    <li>Navigate to the "API Key" section</li>
+                    <li>Copy your personal API key</li>
+                </ul>
+                <a href="https://www.virustotal.com/gui/my-apikey" target="_blank" class="btn btn-secondary">Get API Key</a>
+            </div>
+
+            <div class="step">
+                <h3>Step 3: Configure SecureIt</h3>
+                <p>Open the VirusTotal configuration file and update your API key:</p>
+                <div class="code-block">
+backend/config/virustotal_config.php
+                </div>
+                <p>Replace the placeholder with your actual API key:</p>
+                <div class="code-block">
+'api_key' => 'your_actual_virustotal_api_key_here'
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 4: API Rate Limits</h3>
+                <div class="highlight">
+                    <strong>Free Account Limits:</strong>
+                    <ul>
+                        <li>4 requests per minute</li>
+                        <li>500 requests per day</li>
+                        <li>5,500 requests per month</li>
+                        <li>File size limit: 32MB</li>
+                    </ul>
+                </div>
+                <p>The system automatically handles these limits and will show appropriate messages when limits are reached.</p>
+            </div>
+
+            <div class="step">
+                <h3>Step 5: Available Features</h3>
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <div class="icon">🔍</div>
+                        <h4>URL Scanning</h4>
+                        <p>Scan websites for malware and phishing</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="icon">📁</div>
+                        <h4>File Scanning</h4>
+                        <p>Upload and scan files for viruses</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="icon">📊</div>
+                        <h4>Detailed Reports</h4>
+                        <p>Get comprehensive scan results</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="icon">⚡</div>
+                        <h4>Real-time Results</h4>
+                        <p>Instant threat detection</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 6: Test Your Setup</h3>
+                <p>After configuring your API key:</p>
+                <ul>
+                    <li>Go back to the Security Center</li>
+                    <li>Try scanning a URL or uploading a file</li>
+                    <li>You should see real results from VirusTotal</li>
+                    <li>The system will indicate if you're in demo mode or using the real API</li>
+                </ul>
+            </div>
+
+            <div class="warning">
+                <strong>Important:</strong> Keep your API key secure and never share it publicly. The key is stored locally in your configuration file and only used for API requests to VirusTotal.
+            </div>
+
+            <div class="back-link">
+                <a href="main_vault.php" class="btn">← Back to Security Center</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

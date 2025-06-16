@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Enhanced Password Generator</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 2rem; 
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        .form-input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-right: 0.5rem;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 1.1rem;
+            word-break: break-all;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            margin: 0;
+            font-weight: normal;
+        }
+        .checkbox-group input {
+            margin-right: 0.5rem;
+            width: auto;
+        }
+        .range-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .range-group input {
+            flex: 1;
+        }
+        .range-value {
+            min-width: 2rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced Password Generator Test</h1>
+        
+        <!-- Password Generator Test -->
+        <div class="test-section">
+            <h3>🔒 Password Generator</h3>
+            
+            <div class="form-group">
+                <label>Password Length:</label>
+                <div class="range-group">
+                    <input type="range" id="passwordLength" min="8" max="64" value="14">
+                    <span class="range-value" id="passwordLengthValue">14</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Options:</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="uppercase" checked> Uppercase (A-Z)</label>
+                    <label><input type="checkbox" id="lowercase" checked> Lowercase (a-z)</label>
+                    <label><input type="checkbox" id="numbers" checked> Numbers (0-9)</label>
+                    <label><input type="checkbox" id="symbols"> Symbols (!@#$%...)</label>
+                    <label><input type="checkbox" id="avoidAmbiguous"> Avoid Ambiguous</label>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="generatePassword()">Generate Password</button>
+            <button class="btn" onclick="checkStrength()">Check Strength</button>
+            <div id="passwordResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Passphrase Generator Test -->
+        <div class="test-section">
+            <h3>🔗 Passphrase Generator</h3>
+            
+            <div class="form-group">
+                <label>Number of Words:</label>
+                <div class="range-group">
+                    <input type="range" id="wordCount" min="3" max="20" value="6">
+                    <span class="range-value" id="wordCountValue">6</span>
+                </div>
+                <small>Use 6 words or more to generate a strong passphrase.</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Word Separator:</label>
+                <select id="separator" class="form-input">
+                    <option value="-">Hyphen (-)</option>
+                    <option value=" ">Space ( )</option>
+                    <option value="_">Underscore (_)</option>
+                    <option value=".">Period (.)</option>
+                    <option value="">None</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="capitalize"> Capitalize Words</label>
+                    <label><input type="checkbox" id="includeNumber"> Include Number</label>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="generatePassphrase()">Generate Passphrase</button>
+            <div id="passphraseResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Username Generator Test -->
+        <div class="test-section">
+            <h3>👤 Username Generator</h3>
+            
+            <div class="form-group">
+                <label>Type:</label>
+                <select id="usernameType" class="form-input">
+                    <option value="random_word">Random Word</option>
+                    <option value="combination">Word Combination</option>
+                    <option value="uuid">UUID</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="usernameOptions">
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="usernameCapitalize"> Capitalize</label>
+                    <label><input type="checkbox" id="usernameIncludeNumber"> Include Number</label>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="generateUsername()">Generate Username</button>
+            <div id="usernameResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- History Test -->
+        <div class="test-section">
+            <h3>📜 Generator History</h3>
+            <button class="btn" onclick="loadHistory()">Load History</button>
+            <div id="historyResult" style="display: none; margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/SecureIT/backend/api';
+
+        // Update range values
+        document.getElementById('passwordLength').addEventListener('input', function() {
+            document.getElementById('passwordLengthValue').textContent = this.value;
+        });
+
+        document.getElementById('wordCount').addEventListener('input', function() {
+            document.getElementById('wordCountValue').textContent = this.value;
+        });
+
+        // Show/hide username options based on type
+        document.getElementById('usernameType').addEventListener('change', function() {
+            const options = document.getElementById('usernameOptions');
+            options.style.display = this.value === 'uuid' ? 'none' : 'block';
+        });
+
+        async function generatePassword() {
+            const length = document.getElementById('passwordLength').value;
+            const options = {
+                uppercase: document.getElementById('uppercase').checked,
+                lowercase: document.getElementById('lowercase').checked,
+                numbers: document.getElementById('numbers').checked,
+                symbols: document.getElementById('symbols').checked,
+                avoid_ambiguous: document.getElementById('avoidAmbiguous').checked
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/generator.php`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'generate_password',
+                        length: parseInt(length),
+                        options
+                    })
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById('passwordResult');
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<strong>Generated Password:</strong><br>${data.password}`;
+                    resultDiv.style.display = 'block';
+                } else {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate password');
+            }
+        }
+
+        async function generatePassphrase() {
+            const wordCount = document.getElementById('wordCount').value;
+            const separator = document.getElementById('separator').value;
+            const capitalize = document.getElementById('capitalize').checked;
+            const includeNumber = document.getElementById('includeNumber').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/generator.php`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'generate_passphrase',
+                        word_count: parseInt(wordCount),
+                        separator,
+                        capitalize,
+                        include_number: includeNumber
+                    })
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById('passphraseResult');
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<strong>Generated Passphrase:</strong><br>${data.passphrase}`;
+                    resultDiv.style.display = 'block';
+                } else {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate passphrase');
+            }
+        }
+
+        async function generateUsername() {
+            const type = document.getElementById('usernameType').value;
+            const capitalize = document.getElementById('usernameCapitalize').checked;
+            const includeNumber = document.getElementById('usernameIncludeNumber').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/generator.php`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'generate_username',
+                        type,
+                        capitalize,
+                        include_number: includeNumber
+                    })
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById('usernameResult');
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<strong>Generated Username:</strong><br>${data.username}`;
+                    resultDiv.style.display = 'block';
+                } else {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate username');
+            }
+        }
+
+        async function checkStrength() {
+            const password = document.getElementById('passwordResult').textContent.split('\n')[1];
+            if (!password) {
+                alert('Generate a password first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/generator.php`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'check_strength',
+                        password
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    const strength = data.strength;
+                    const resultDiv = document.getElementById('passwordResult');
+                    resultDiv.innerHTML += `<br><br><strong>Password Strength:</strong> ${strength.strength} (${strength.score}/100)`;
+                    
+                    if (strength.feedback.length > 0) {
+                        resultDiv.innerHTML += `<br><strong>Recommendations:</strong><ul>`;
+                        strength.feedback.forEach(feedback => {
+                            resultDiv.innerHTML += `<li>${feedback}</li>`;
+                        });
+                        resultDiv.innerHTML += `</ul>`;
+                    }
+                } else {
+                    alert('Error checking password strength: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to check password strength');
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch(`${API_BASE}/generator.php?action=history&limit=10`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById('historyResult');
+                
+                if (data.success) {
+                    if (data.history.length === 0) {
+                        resultDiv.innerHTML = '<p>No history found. Generate some passwords first!</p>';
+                    } else {
+                        let html = '<h4>Recent Generations:</h4><ul>';
+                        data.history.forEach(item => {
+                            html += `<li>
+                                <strong>${item.generated_type}:</strong> ${item.generated_value}
+                                <small> (${new Date(item.created_at).toLocaleString()})</small>
+                            </li>`;
+                        });
+                        html += '</ul>';
+                        resultDiv.innerHTML = html;
+                    }
+                    resultDiv.style.display = 'block';
+                } else {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to load history');
+            }
+        }
+    </script>
+</body>
+</html>

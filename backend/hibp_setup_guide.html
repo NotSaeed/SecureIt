@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIBP API Setup - SecureIt</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #7c3aed;
+        }
+        .step {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #7c3aed;
+        }
+        .code {
+            background: #f3f4f6;
+            padding: 1rem;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+        .success {
+            background: #ecfdf5;
+            border: 1px solid #10b981;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+        a {
+            color: #7c3aed;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            padding: 0.5rem 1rem;
+            background: #7c3aed;
+            color: white;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            background: #6d28d9;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="main_vault.php?section=security" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Security Center
+        </a>
+        
+        <h1><i class="fas fa-exclamation-triangle"></i> Have I Been Pwned API Setup</h1>
+        
+        <p>To enable real-time breach checking with the official Have I Been Pwned database, you need to configure an API key.</p>
+        
+        <div class="warning">
+            <strong><i class="fas fa-exclamation-triangle"></i> Important:</strong> 
+            Without an API key, the system will use demo mode with simulated data for testing purposes.
+        </div>
+        
+        <h2>Setup Instructions</h2>
+        
+        <div class="step">
+            <h3>Step 1: Get an API Key</h3>
+            <p>Visit <a href="https://haveibeenpwned.com/API/Key" target="_blank">haveibeenpwned.com/API/Key</a> to purchase an API subscription.</p>
+            <p><strong>Pricing:</strong> API access requires a subscription starting from $3.50/month for basic usage.</p>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Configure the API Key</h3>
+            <p>Edit the file: <code>backend/config/hibp_config.php</code></p>
+            
+            <p>Find this line:</p>
+            <div class="code">
+'API_KEY' => 'YOUR_HIBP_API_KEY_HERE',
+            </div>
+            
+            <p>Replace <code>YOUR_HIBP_API_KEY_HERE</code> with your actual API key:</p>
+            <div class="code">
+'API_KEY' => 'your-actual-api-key-here',
+            </div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 3: Enable Real API Mode</h3>
+            <p>In the same file, find this line:</p>
+            <div class="code">
+'DEMO_MODE' => true,
+            </div>
+            
+            <p>Change it to:</p>
+            <div class="code">
+'DEMO_MODE' => false,
+            </div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 4: Adjust Rate Limits (Optional)</h3>
+            <p>Based on your subscription plan, you may need to adjust the rate limit:</p>
+            <div class="code">
+'RATE_LIMIT_RPM' => 60,  // Adjust based on your plan
+            </div>
+            
+            <p><strong>Subscription Plans:</strong></p>
+            <ul>
+                <li><strong>Pwned 1:</strong> 10 RPM</li>
+                <li><strong>Pwned 2:</strong> 60 RPM</li>
+                <li><strong>Pwned 3:</strong> 200 RPM</li>
+                <li><strong>Pwned 4:</strong> 1,000 RPM</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <h3>Step 5: Test the Configuration</h3>
+            <p>Return to the Security Center and open the "Have I Been Pwned" tool. The configuration status should show "Real API: Connected".</p>
+        </div>
+        
+        <div class="success">
+            <strong><i class="fas fa-check-circle"></i> Benefits of Real API:</strong>
+            <ul>
+                <li>Access to 800+ real data breaches</li>
+                <li>Up-to-date breach information</li>
+                <li>Paste monitoring capabilities</li>
+                <li>Accurate security assessments</li>
+            </ul>
+        </div>
+        
+        <h2>Security Considerations</h2>
+        
+        <div class="warning">
+            <ul>
+                <li><strong>Never commit API keys to version control</strong></li>
+                <li><strong>Restrict file permissions</strong> on the config file</li>
+                <li><strong>Monitor API usage</strong> to avoid rate limits</li>
+                <li><strong>Keep your API key secure</strong> and regenerate if compromised</li>
+            </ul>
+        </div>
+        
+        <h2>Demo Mode</h2>
+        
+        <p>If you prefer to test the system without purchasing an API key, demo mode provides:</p>
+        <ul>
+            <li>Simulated breach data for testing</li>
+            <li>Sample breach responses</li>
+            <li>Full UI functionality</li>
+            <li>No API costs</li>
+        </ul>
+        
+        <div class="step">
+            <h3>Need Help?</h3>
+            <p>If you encounter any issues during setup:</p>
+            <ul>
+                <li>Check that the config file is writable</li>
+                <li>Verify your API key is correct</li>
+                <li>Ensure your server can make HTTPS requests</li>
+                <li>Check the browser console for error messages</li>
+            </ul>
+        </div>
+        
+        <p style="text-align: center; margin-top: 2rem;">
+            <a href="main_vault.php?section=security" class="back-link">
+                <i class="fas fa-arrow-left"></i> Return to Security Center
+            </a>
+        </p>
+    </div>
+</body>
+</html>
