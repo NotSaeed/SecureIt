@@ -6,246 +6,275 @@
 
 require_once 'Database.php';
 require_once 'EncryptionHelper.php';
+require_once 'Vault.php';
 
 class SendManager {
     private $db;
-    private $encryption;
-
-    public function __construct() {
+    private $encryptionHelper;
+      public function __construct() {
         $this->db = new Database();
-        $this->encryption = new EncryptionHelper();
+        $this->encryptionHelper = new EncryptionHelper();
     }
 
+    /**
+     * Generate a secure access token for sends
+     */
+    private function generateAccessToken() {
+        return bin2hex(random_bytes(32)); // 64 character hex string
+    }
+    
     /**
      * Create a new send
      */
-    public function createSend($user_id, $type, $name, $content, $options = []) {
-        $options = array_merge([
-            'deletion_date' => date('Y-m-d H:i:s', strtotime('+7 days')),
-            'password' => null,
-            'max_views' => null,
-            'hide_email' => false,
-            'file_path' => null
-        ], $options);
-
-        // Validate send type
-        if (!in_array($type, ['text', 'file'])) {
-            throw new Exception("Invalid send type");
-        }
-
-        // Validate deletion date
-        $deletionTime = strtotime($options['deletion_date']);
-        if ($deletionTime === false || $deletionTime <= time()) {
-            throw new Exception("Invalid deletion date");
-        }
-
-        // Generate unique access link
-        $access_link = $this->generateAccessLink();
-        
-        // Encrypt content
-        $encrypted_content = $this->encryption->encrypt($content);
-        
-        // Hash password if provided
-        $password_hash = $options['password'] ? 
-            password_hash($options['password'], PASSWORD_DEFAULT) : null;
-
-        $sql = "INSERT INTO sends (user_id, send_type, name, content, file_path, access_link, 
-                password_hash, deletion_date, max_views, hide_email) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        $this->db->query($sql, [
-            $user_id, 
-            $type, 
-            $name, 
-            $encrypted_content, 
-            $options['file_path'],
-            $access_link, 
-            $password_hash, 
-            $options['deletion_date'], 
-            $options['max_views'], 
-            $options['hide_email'] ? 1 : 0
-        ]);
-
-        return [
-            'id' => $this->db->lastInsertId(),
-            'access_link' => $access_link,
-            'deletion_date' => $options['deletion_date']
-        ];
-    }
-
-    /**
-     * Retrieve a send by access link
-     */
-    public function getSend($access_link, $password = null) {
-        $sql = "SELECT s.*, u.email as sender_email FROM sends s 
-                JOIN users u ON s.user_id = u.id 
-                WHERE s.access_link = ? AND s.deletion_date > NOW()";
-        
-        $send = $this->db->fetchOne($sql, [$access_link]);
-
-        if (!$send) {
-            throw new Exception('Send not found or expired');
-        }
-
-        // Check password if required
-        if ($send['password_hash'] && (!$password || !password_verify($password, $send['password_hash']))) {
-            throw new Exception('Invalid password required to access this send');
-        }
-
-        // Check view limit
-        if ($send['max_views'] && $send['current_views'] >= $send['max_views']) {
-            throw new Exception('Send has reached its maximum view limit');
-        }
-
-        // Increment view count
-        $this->incrementViewCount($send['id']);
-
-        // Decrypt content
+    public function createSend($userId, $type, $name, $content, $options = []) {
         try {
-            $send['content'] = $this->encryption->decrypt($send['content']);
+            // Generate unique access token
+            $accessToken = $this->generateAccessToken();
+            
+            // Set default expiration (7 days from now)
+            $expirationDate = $options['expiration_date'] ?? date('Y-m-d H:i:s', strtotime('+7 days'));
+            
+            // Validate expiration date format
+            if (!strtotime($expirationDate)) {
+                $expirationDate = date('Y-m-d H:i:s', strtotime('+7 days'));
+            }            // Prepare data for database
+            $sendData = [
+                'user_id' => $userId,
+                'type' => $type,
+                'name' => $name,
+                'access_token' => $accessToken,
+                'expires_at' => $expirationDate,
+                'max_views' => $options['max_views'] ?? 10,
+                'password_hash' => null,                'content' => null,
+                'file_path' => null,
+                'file_name' => null,
+                'file_size' => null,
+                'file_data' => null,
+                'storage_type' => null,
+                'mime_type' => null,
+                'anonymous' => $options['anonymous'] ?? false,
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            
+            // Handle password protection
+            if (!empty($options['password'])) {
+                $sendData['password_hash'] = password_hash($options['password'], PASSWORD_ARGON2ID);
+            }            // Handle content based on type
+            if ($type === 'file') {
+                // File upload handling
+                if (isset($options['file_path'])) {
+                    if (file_exists($options['file_path'])) {
+                        $sendData['file_name'] = $content; // Original filename
+                        $sendData['file_size'] = filesize($options['file_path']);
+                        $sendData['mime_type'] = mime_content_type($options['file_path']);
+                        
+                        // Determine if this is an image that should be stored as BLOB
+                        $imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+                        $isImage = in_array($sendData['mime_type'], $imageTypes);
+                        
+                        if ($isImage) {
+                            // Store image as BLOB for security
+                            $sendData['file_data'] = file_get_contents($options['file_path']);
+                            $sendData['storage_type'] = 'blob';
+                            $sendData['file_path'] = null; // Don't store file path for images
+                            
+                            // Delete the uploaded file since we're storing it in database
+                            unlink($options['file_path']);
+                            
+                            // Store metadata as content
+                            $sendData['content'] = json_encode([
+                                'original_name' => $content,
+                                'file_size' => $sendData['file_size'],
+                                'mime_type' => $sendData['mime_type'],
+                                'storage_type' => 'blob'
+                            ]);
+                        } else {
+                            // Store other files (PDFs, documents) as downloadable files
+                            $sendData['file_path'] = $options['file_path'];
+                            $sendData['storage_type'] = 'file';
+                            $sendData['file_data'] = null;
+                            
+                            // Store metadata as content
+                            $sendData['content'] = json_encode([
+                                'original_name' => $content,
+                                'file_size' => $sendData['file_size'],
+                                'mime_type' => $sendData['mime_type'],
+                                'storage_type' => 'file'
+                            ]);
+                        }
+                    } else {
+                        throw new Exception('File not found at path: ' . $options['file_path']);
+                    }
+                } else {
+                    throw new Exception('File path not provided in options');
+                }
+            } else {
+                // Text content
+                $sendData['content'] = $this->encryptionHelper->encrypt($content);
+                $sendData['storage_type'] = null;
+            }            // Insert into database
+            $sql = "INSERT INTO sends (user_id, type, name, access_token, content, file_path, file_name, file_size, file_data, storage_type, mime_type, password_hash, expires_at, max_views, view_count, anonymous, created_at) 
+                    VALUES (:user_id, :type, :name, :access_token, :content, :file_path, :file_name, :file_size, :file_data, :storage_type, :mime_type, :password_hash, :expires_at, :max_views, 0, :anonymous, :created_at)";
+            
+            $result = $this->db->query($sql, $sendData);
+            
+            if ($result) {
+                $sendId = $this->db->lastInsertId();
+                
+                return [
+                    'id' => $sendId,
+                    'access_link' => $accessToken,
+                    'expires_at' => $expirationDate,
+                    'type' => $type,
+                    'name' => $name
+                ];
+            }
+            
+            return false;
+            
         } catch (Exception $e) {
-            throw new Exception('Failed to decrypt send content');
+            error_log("SendManager::createSend error: " . $e->getMessage());
+            throw $e;
         }
-
-        // Hide email if requested
-        if ($send['hide_email']) {
-            $send['sender_email'] = null;
-        }
-
-        return $send;
     }
-
+    
     /**
+     * Get a send by access token
+     */    public function getSend($accessToken) {
+        try {
+            $sql = "SELECT * FROM sends WHERE access_token = :access_token AND expires_at > NOW()";
+            $send = $this->db->fetchOne($sql, ['access_token' => $accessToken]);
+            
+            if (!$send) {
+                return null;
+            }
+            
+            // Check if max views exceeded (only if max_views is set)
+            if ($send['max_views'] !== null && $send['view_count'] >= $send['max_views']) {
+                return null;
+            }
+            
+            return $send;
+        } catch (Exception $e) {
+            error_log("SendManager::getSend error: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Access a send (increment view count)
+     */
+    public function accessSend($accessToken, $password = null) {
+        try {
+            $send = $this->getSend($accessToken);
+            
+            if (!$send) {
+                return ['success' => false, 'message' => 'Send not found or expired'];
+            }
+            
+            // Check password if required
+            if ($send['password_hash'] && !password_verify($password, $send['password_hash'])) {
+                return ['success' => false, 'message' => 'Invalid password'];
+            }
+              // Increment view count
+            $sql = "UPDATE sends SET view_count = view_count + 1, last_accessed = NOW() WHERE id = :id";
+            $this->db->query($sql, ['id' => $send['id']]);
+              // Decrypt content if text, credential, or emergency
+            if ($send['type'] === 'text' || $send['type'] === 'credential' || $send['type'] === 'emergency') {
+                $send['content'] = $this->encryptionHelper->decrypt($send['content']);
+            }
+            
+            return ['success' => true, 'send' => $send];
+            
+        } catch (Exception $e) {
+            error_log("SendManager::accessSend error: " . $e->getMessage());
+            return ['success' => false, 'message' => 'Error accessing send'];
+        }
+    }
+      /**
      * Get all sends for a user
      */
-    public function getUserSends($user_id) {
-        $sql = "SELECT id, send_type, name, access_link, deletion_date, max_views, 
-                current_views, hide_email, created_at 
-                FROM sends 
-                WHERE user_id = ? AND deletion_date > NOW() 
-                ORDER BY created_at DESC";
-        
-        return $this->db->fetchAll($sql, [$user_id]);
+    public function getUserSends($userId) {
+        try {
+            $sql = "SELECT id, name, type, access_token, created_at, expires_at, max_views, view_count, 
+                           file_name, file_size, storage_type, mime_type, password_hash
+                    FROM sends 
+                    WHERE user_id = :user_id 
+                    ORDER BY created_at DESC";
+            
+            $sends = $this->db->fetchAll($sql, ['user_id' => $userId]);
+            
+            // Add status information
+            foreach ($sends as &$send) {
+                $send['is_expired'] = strtotime($send['expires_at']) < time();
+                $send['is_exhausted'] = $send['view_count'] >= $send['max_views'];
+                $send['has_password'] = !empty($send['password_hash']);
+                $send['is_image'] = $send['storage_type'] === 'blob';
+                
+                // Remove sensitive data
+                unset($send['password_hash']);
+            }
+            
+            return $sends;
+            
+        } catch (Exception $e) {
+            error_log("SendManager::getUserSends error: " . $e->getMessage());
+            return [];
+        }
     }
-
-    /**
-     * Get send statistics for a user
-     */
-    public function getSendStats($user_id) {
-        $sql = "SELECT 
-                    COUNT(*) as total_sends,
-                    SUM(CASE WHEN send_type = 'text' THEN 1 ELSE 0 END) as text_sends,
-                    SUM(CASE WHEN send_type = 'file' THEN 1 ELSE 0 END) as file_sends,
-                    SUM(current_views) as total_views,
-                    COUNT(CASE WHEN deletion_date <= NOW() THEN 1 END) as expired_sends
-                FROM sends 
-                WHERE user_id = ?";
-        
-        $stats = $this->db->fetchOne($sql, [$user_id]);
-        
-        return [
-            'total_sends' => (int)$stats['total_sends'],
-            'text_sends' => (int)$stats['text_sends'],
-            'file_sends' => (int)$stats['file_sends'],
-            'total_views' => (int)$stats['total_views'],
-            'expired_sends' => (int)$stats['expired_sends'],
-            'active_sends' => (int)$stats['total_sends'] - (int)$stats['expired_sends']
-        ];
-    }
-
+    
     /**
      * Delete a send
      */
-    public function deleteSend($id, $user_id) {
-        // Get send info before deletion for cleanup
-        $send = $this->db->fetchOne("SELECT file_path FROM sends WHERE id = ? AND user_id = ?", [$id, $user_id]);
-        
-        if (!$send) {
-            throw new Exception("Send not found");
-        }
-
-        // Delete from database
-        $sql = "DELETE FROM sends WHERE id = ? AND user_id = ?";
-        $result = $this->db->query($sql, [$id, $user_id]);
-
-        // Clean up file if it exists
-        if ($send['file_path'] && file_exists($send['file_path'])) {
-            unlink($send['file_path']);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Update send (limited fields)
-     */
-    public function updateSend($id, $user_id, $data) {
-        $allowedFields = ['name', 'deletion_date', 'max_views'];
-        $updates = [];
-        $params = [];
-
-        foreach ($allowedFields as $field) {
-            if (isset($data[$field])) {
-                $updates[] = "$field = ?";
-                $params[] = $data[$field];
+    public function deleteSend($sendId, $userId) {
+        try {
+            // Get send info first to delete file if needed
+            $sql = "SELECT file_path FROM sends WHERE id = :id AND user_id = :user_id";
+            $send = $this->db->fetchOne($sql, ['id' => $sendId, 'user_id' => $userId]);
+            
+            if (!$send) {
+                return false;
             }
+            
+            // Delete file if exists
+            if ($send['file_path'] && file_exists($send['file_path'])) {
+                unlink($send['file_path']);
+            }
+            
+            // Delete from database
+            $sql = "DELETE FROM sends WHERE id = :id AND user_id = :user_id";
+            return $this->db->query($sql, ['id' => $sendId, 'user_id' => $userId]);
+            
+        } catch (Exception $e) {
+            error_log("SendManager::deleteSend error: " . $e->getMessage());
+            return false;
         }
-
-        if (empty($updates)) {
-            throw new Exception("No valid fields to update");
-        }
-
-        $params[] = $id;
-        $params[] = $user_id;
-
-        $sql = "UPDATE sends SET " . implode(', ', $updates) . " WHERE id = ? AND user_id = ?";
-        return $this->db->query($sql, $params);
     }
-
-    /**
-     * Generate unique access link
-     */
-    private function generateAccessLink() {
-        do {
-            $link = bin2hex(random_bytes(16));
-            $existing = $this->db->fetchOne("SELECT id FROM sends WHERE access_link = ?", [$link]);
-        } while ($existing);
-
-        return $link;
-    }
-
-    /**
-     * Increment view count for a send
-     */
-    private function incrementViewCount($send_id) {
-        $sql = "UPDATE sends SET current_views = current_views + 1 WHERE id = ?";
-        $this->db->query($sql, [$send_id]);
-    }
-
+    
     /**
      * Clean up expired sends
      */
     public function cleanupExpiredSends() {
-        // Get expired sends with file paths for cleanup
-        $expiredSends = $this->db->fetchAll(
-            "SELECT id, file_path FROM sends WHERE deletion_date <= NOW() AND file_path IS NOT NULL"
-        );
-
-        // Delete files
-        foreach ($expiredSends as $send) {
-            if (file_exists($send['file_path'])) {
-                unlink($send['file_path']);
+        try {
+            // Get expired sends with files
+            $sql = "SELECT id, file_path FROM sends WHERE expires_at < NOW() AND file_path IS NOT NULL";
+            $expiredSends = $this->db->fetchAll($sql);
+            
+            // Delete files
+            foreach ($expiredSends as $send) {
+                if (file_exists($send['file_path'])) {
+                    unlink($send['file_path']);
+                }
             }
+            
+            // Delete from database - use expires_at not deletion_date
+            $sql = "DELETE FROM sends WHERE expires_at < NOW()";
+            return $this->db->query($sql);
+            
+        } catch (Exception $e) {
+            error_log("SendManager::cleanupExpiredSends error: " . $e->getMessage());
+            return false;
         }
-
-        // Delete expired sends from database
-        $sql = "DELETE FROM sends WHERE deletion_date <= NOW()";
-        $result = $this->db->query($sql);
-
-        return [
-            'deleted_sends' => $result->rowCount(),
-            'deleted_files' => count($expiredSends)
-        ];
     }
 
     /**
@@ -285,6 +314,233 @@ class SendManager {
         }
 
         return true;
+    }
+
+    /**
+     * Get send statistics for a user
+     */    public function getSendStats($userId) {
+        try {
+            $sql = "SELECT 
+                        COUNT(*) as total_sends,
+                        SUM(CASE WHEN expires_at > NOW() AND (max_views IS NULL OR view_count < max_views) THEN 1 ELSE 0 END) as active_sends,
+                        SUM(CASE WHEN expires_at <= NOW() THEN 1 ELSE 0 END) as expired_sends,
+                        SUM(CASE WHEN max_views IS NOT NULL AND view_count >= max_views THEN 1 ELSE 0 END) as exhausted_sends,
+                        COALESCE(SUM(view_count), 0) as total_views
+                    FROM sends 
+                    WHERE user_id = :user_id";
+            
+            $stats = $this->db->fetchOne($sql, ['user_id' => $userId]);
+            
+            return [
+                'total_sends' => (int)($stats['total_sends'] ?? 0),
+                'active_sends' => (int)($stats['active_sends'] ?? 0),
+                'expired_sends' => (int)($stats['expired_sends'] ?? 0),
+                'exhausted_sends' => (int)($stats['exhausted_sends'] ?? 0),
+                'total_views' => (int)($stats['total_views'] ?? 0)
+            ];
+            
+        } catch (Exception $e) {
+            error_log("SendManager::getSendStats error: " . $e->getMessage());
+            return [
+                'total_sends' => 0,
+                'active_sends' => 0,
+                'expired_sends' => 0,
+                'exhausted_sends' => 0,
+                'total_views' => 0
+            ];
+        }
+    }
+    
+    /**
+     * Create a credential delivery send for sharing vault items
+     */
+    public function createCredentialDelivery($userId, $vaultItemId, $recipientEmail, $options = []) {
+        try {
+            // Generate unique access token
+            $accessToken = $this->generateAccessToken();
+            
+            // Calculate expiration based on hours
+            $expiryHours = $options['expiry_hours'] ?? 24;
+            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            
+            // Get vault item data
+            $vault = new Vault();
+            $vaultItem = $vault->getItem($vaultItemId, $userId);
+            
+            if (!$vaultItem) {
+                throw new Exception('Vault item not found or access denied');
+            }
+              // Prepare credential content
+            $credentialContent = json_encode([
+                'item_name' => $vaultItem['item_name'],
+                'item_type' => $vaultItem['item_type'],
+                'data' => $vaultItem['encrypted_data'], // Use encrypted_data field
+                'website_url' => $vaultItem['website_url'] ?? null,
+                'recipient_email' => $recipientEmail,
+                'message' => $options['message'] ?? null
+            ]);
+            
+            // Prepare data for database
+            $sendData = [
+                'user_id' => $userId,
+                'type' => 'credential',
+                'name' => 'Credential: ' . $vaultItem['item_name'],
+                'access_token' => $accessToken,                'expires_at' => $expirationDate,
+                'max_views' => $options['max_views'] ?? null,
+                'password_hash' => null,
+                'metadata' => json_encode([
+                    'recipient_email' => $recipientEmail,
+                    'vault_item_id' => $vaultItemId,
+                    'original_item_name' => $vaultItem['item_name']
+                ])
+            ];
+            
+            // Hash password if provided
+            if (!empty($options['access_password'])) {
+                $sendData['password_hash'] = password_hash($options['access_password'], PASSWORD_DEFAULT);
+            }            // Encrypt the credential content
+            $encryptedContent = $this->encryptionHelper->encrypt($credentialContent);
+            $sendData['content'] = $encryptedContent;
+            
+            // Insert into database
+            $sql = "INSERT INTO sends (user_id, type, name, access_token, expires_at, max_views, password_hash, metadata, content, view_count) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+            
+            $this->db->query($sql, [
+                $sendData['user_id'],
+                $sendData['type'],
+                $sendData['name'],
+                $sendData['access_token'],
+                $sendData['expires_at'],
+                $sendData['max_views'],
+                $sendData['password_hash'],
+                
+                $sendData['metadata'],
+                $sendData['content']
+            ]);
+            
+            $sendId = $this->db->lastInsertId();
+            
+            if (!$sendId) {
+                throw new Exception('Failed to create credential delivery');
+            }
+            
+            return [
+                'id' => $sendId,
+                'access_link' => $accessToken,
+                'expires_at' => $expirationDate,
+                'recipient_email' => $recipientEmail
+            ];
+            
+        } catch (Exception $e) {
+            error_log("SendManager::createCredentialDelivery - " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Create an emergency contact delivery for digital legacy access
+     */
+    public function createEmergencyContact($userId, $contactName, $contactEmail, $vaultItemIds, $options = []) {
+        try {
+            // Generate unique access token
+            $accessToken = $this->generateAccessToken();
+            
+            // Set expiration (emergency contacts have longer expiration)
+            $expiryDays = $options['expiry_days'] ?? 365; // Default 1 year
+            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryDays} days"));
+            
+            // Get selected vault items
+            $vault = new Vault();
+            $selectedItems = [];
+              foreach ($vaultItemIds as $itemId) {
+                $vaultItem = $vault->getItem($itemId, $userId);
+                if ($vaultItem) {
+                    $selectedItems[] = [
+                        'id' => $vaultItem['id'],
+                        'item_name' => $vaultItem['item_name'],
+                        'item_type' => $vaultItem['item_type'],
+                        'data' => $vaultItem['encrypted_data'], // Use encrypted_data field
+                        'website_url' => $vaultItem['website_url'] ?? null
+                    ];
+                }
+            }
+            
+            if (empty($selectedItems)) {
+                throw new Exception('No valid vault items found for emergency access');
+            }
+            
+            // Prepare emergency content
+            $emergencyContent = json_encode([
+                'contact_name' => $contactName,
+                'contact_email' => $contactEmail,
+                'relationship' => $options['relationship'] ?? 'Emergency Contact',
+                'instructions' => $options['instructions'] ?? '',
+                'trigger_type' => $options['trigger_type'] ?? 'manual',
+                'inactivity_days' => $options['inactivity_days'] ?? 30,
+                'vault_items' => $selectedItems,
+                'created_date' => date('Y-m-d H:i:s')
+            ]);
+              // Prepare data for database
+            $sendData = [
+                'user_id' => $userId,
+                'type' => 'emergency',
+                'name' => 'Emergency Access for ' . $contactName,
+                'access_token' => $accessToken,
+                'expires_at' => $expirationDate,
+                'max_views' => $options['max_views'] ?? null,
+                'password_hash' => null,
+                'metadata' => json_encode([
+                    'contact_name' => $contactName,
+                    'contact_email' => $contactEmail,
+                    'relationship' => $options['relationship'] ?? 'Emergency Contact',
+                    'vault_item_count' => count($selectedItems)
+                ])
+            ];
+            
+            // Hash password if provided
+            if (!empty($options['access_password'])) {
+                $sendData['password_hash'] = password_hash($options['access_password'], PASSWORD_DEFAULT);
+            }            // Encrypt the emergency content
+            $encryptedContent = $this->encryptionHelper->encrypt($emergencyContent);
+            $sendData['content'] = $encryptedContent;
+            
+            // Insert into database
+            $sql = "INSERT INTO sends (user_id, type, name, access_token, expires_at, max_views, password_hash, metadata, content, view_count) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+            
+            $this->db->query($sql, [
+                $sendData['user_id'],
+                $sendData['type'],
+                $sendData['name'],
+                $sendData['access_token'],
+                $sendData['expires_at'],
+                $sendData['max_views'],
+                $sendData['password_hash'],
+                
+                $sendData['metadata'],
+                $sendData['content']
+            ]);
+            
+            $sendId = $this->db->lastInsertId();
+            
+            if (!$sendId) {
+                throw new Exception('Failed to create emergency contact');
+            }
+            
+            return [
+                'id' => $sendId,
+                'access_link' => $accessToken,
+                'expires_at' => $expirationDate,
+                'contact_name' => $contactName,
+                'contact_email' => $contactEmail,
+                'vault_items_count' => count($selectedItems)
+            ];
+            
+        } catch (Exception $e) {
+            error_log("SendManager::createEmergencyContact - " . $e->getMessage());
+            throw $e;
+        }
     }
 }
 ?>

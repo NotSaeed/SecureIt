@@ -11,6 +11,28 @@ $error = '';
 $success = '';
 $isLoggedIn = isset($_SESSION['user_id']);
 
+// Handle session messages from redirects
+if (isset($_SESSION['message'])) {
+    if ($_SESSION['message_type'] === 'success') {
+        $success = $_SESSION['message'];
+    } else {
+        $error = $_SESSION['message'];
+    }
+    unset($_SESSION['message'], $_SESSION['message_type']);
+}
+
+// Handle special success messages for sends
+$sendSuccessLink = '';
+$emergencySuccessData = null;
+if (isset($_SESSION['send_success_link'])) {
+    $sendSuccessLink = $_SESSION['send_success_link'];
+    unset($_SESSION['send_success_link']);
+}
+if (isset($_SESSION['emergency_success_data'])) {
+    $emergencySuccessData = $_SESSION['emergency_success_data'];
+    unset($_SESSION['emergency_success_data']);
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -25,13 +47,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['user_id'] = $authenticatedUser->id;
                     $_SESSION['user_email'] = $authenticatedUser->email;
                     $_SESSION['user_name'] = $authenticatedUser->name;
-                    $success = 'Login successful!';
-                    $isLoggedIn = true;
+                    $_SESSION['message'] = 'Login successful!';
+                    $_SESSION['message_type'] = 'success';
+                    // Redirect to prevent form resubmission
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=dashboard');
+                    exit();
                 } else {
-                    $error = 'Invalid email or password';
+                    $_SESSION['message'] = 'Invalid email or password';
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF']);
+                    exit();
                 }
             } catch (Exception $e) {
-                $error = 'Login failed: ' . $e->getMessage();
+                $_SESSION['message'] = 'Login failed: ' . $e->getMessage();
+                $_SESSION['message_type'] = 'error';
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
             }
             break;
             
@@ -43,14 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id'] = $newUser->id;
                 $_SESSION['user_email'] = $newUser->email;
                 $_SESSION['user_name'] = $newUser->name;
-                $success = 'Registration successful! Welcome to SecureIt!';
-                $isLoggedIn = true;
+                $_SESSION['message'] = 'Registration successful! Welcome to SecureIt!';
+                $_SESSION['message_type'] = 'success';
+                // Redirect to prevent form resubmission
+                header('Location: ' . $_SERVER['PHP_SELF'] . '?section=dashboard');
+                exit();
             } catch (Exception $e) {
-                $error = 'Registration failed: ' . $e->getMessage();
+                $_SESSION['message'] = 'Registration failed: ' . $e->getMessage();
+                $_SESSION['message_type'] = 'error';
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
             }
             break;
-            
-        case 'add_vault_item':
+              case 'add_vault_item':
             if ($isLoggedIn) {
                 try {
                     $vault = new Vault();
@@ -77,73 +113,272 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_POST['website_url'] ?? null
                     );
                     
-                    $success = 'Item added successfully!';
+                    $_SESSION['message'] = 'Item added successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to add item: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to add item: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 }
             }
-            break;
-              case 'delete_vault_item':
+            break;              case 'delete_vault_item':
             if ($isLoggedIn && isset($_POST['item_id'])) {
                 try {
                     $vault = new Vault();
                     $vault->deleteItem($_POST['item_id'], $_SESSION['user_id']);
-                    $success = 'Item deleted successfully!';
+                    $_SESSION['message'] = 'Item deleted successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to delete item: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to delete item: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 }
             }
-            break;
-            
-        case 'create_secure_send':
+            break;        case 'create_secure_send':
             if ($isLoggedIn) {
                 try {
                     $sendManager = new SendManager();
-                    
-                    // Get form data
+                      // Get form data
                     $name = trim($_POST['send_name'] ?? '');
-                    $content = trim($_POST['send_text'] ?? '');
-                    $sendType = 'text'; // Default to text
+                    $textContent = trim($_POST['send_text'] ?? '');
+                    $selectedType = trim($_POST['send_type'] ?? 'text'); // Get the selected type from radio buttons
                     
                     // Validate required fields
                     if (empty($name)) {
                         throw new Exception('Send name is required');
                     }
-                    if (empty($content)) {
-                        throw new Exception('Content is required');
-                    }
                     
-                    // Parse deletion date
-                    $deletionDays = (int)($_POST['deletion_days'] ?? 7);
-                    $deletionDate = date('Y-m-d H:i:s', strtotime("+{$deletionDays} days"));
+                    // Determine send type and content
+                    $sendType = 'text';
+                    $content = $textContent;                    // Determine if user intended to upload a file (based on radio selection and file presence)
+                    $userSelectedFile = ($selectedType === 'file');
+                    $fileProvided = (!empty($_FILES['send_file']['name']) || $_FILES['send_file']['error'] !== UPLOAD_ERR_NO_FILE);
+                    $intendedFileUpload = $fileProvided; // Only true if file was actually provided
                     
-                    // Build options array
+                    // Check if file upload is provided and successful
+                    if (isset($_FILES['send_file']) && $_FILES['send_file']['error'] === UPLOAD_ERR_OK) {
+                        $sendType = 'file';
+                        
+                        // Validate file size
+                        if ($_FILES['send_file']['size'] > 50 * 1024 * 1024) { // 50MB limit
+                            throw new Exception('File size must be less than 50MB');
+                        }
+                        
+                        // Create uploads directory if it doesn't exist
+                        $uploadDir = 'uploads/sends/';
+                        if (!is_dir($uploadDir)) {
+                            if (!mkdir($uploadDir, 0755, true)) {
+                                throw new Exception('Failed to create upload directory');
+                            }
+                        }
+                        
+                        // Check if directory is writable
+                        if (!is_writable($uploadDir)) {
+                            throw new Exception('Upload directory is not writable');
+                        }
+                        
+                        // Generate unique filename to prevent conflicts
+                        $originalName = $_FILES['send_file']['name'];
+                        $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                        $safeName = preg_replace('/[^a-zA-Z0-9.]/', '_', $originalName);
+                        $uniqueFileName = uniqid('send_', true) . '_' . $safeName;
+                        $uploadPath = $uploadDir . $uniqueFileName;
+                        
+                        // Check if source file exists
+                        if (!file_exists($_FILES['send_file']['tmp_name'])) {
+                            throw new Exception('Temporary upload file not found');
+                        }
+                        
+                        // Move uploaded file
+                        if (!move_uploaded_file($_FILES['send_file']['tmp_name'], $uploadPath)) {
+                            $error = error_get_last();
+                            throw new Exception('Failed to move uploaded file: ' . ($error['message'] ?? 'Unknown error'));
+                        }
+                        
+                        // Verify file was moved successfully
+                        if (!file_exists($uploadPath)) {
+                            throw new Exception('File upload verification failed');
+                        }
+                          // Set content as original filename (don't set options here yet)
+                        $content = $originalName;                    } else if ($intendedFileUpload && isset($_FILES['send_file']) && $_FILES['send_file']['error'] !== UPLOAD_ERR_OK) {
+                        // Handle upload errors - only if user actually tried to upload a file
+                        $uploadErrors = [
+                            UPLOAD_ERR_INI_SIZE => 'File size exceeds server limit',
+                            UPLOAD_ERR_FORM_SIZE => 'File size exceeds form limit',
+                            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                            UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+                            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary upload directory',
+                            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                            UPLOAD_ERR_EXTENSION => 'File upload stopped by extension'
+                        ];
+                        $errorMessage = $uploadErrors[$_FILES['send_file']['error']] ?? 'Unknown upload error';
+                        throw new Exception('File upload error: ' . $errorMessage);
+                    } else if ($userSelectedFile && !$fileProvided) {
+                        // User selected file mode but didn't provide a file
+                        throw new Exception('Please select a file to upload or switch to text mode');
+                    } else if (empty($textContent) && !$userSelectedFile) {
+                        // User selected text mode but didn't provide text content
+                        throw new Exception('Please provide text content');
+                    } else if (empty($textContent) && $userSelectedFile && !$fileProvided) {
+                        // User selected file mode but didn't provide file or text fallback
+                        throw new Exception('Please select a file to upload or switch to text mode');
+                    }// Parse deletion date based on type
+                    if ($_POST['expiry_type'] === 'custom' && !empty($_POST['custom_expiry'])) {
+                        $deletionDate = date('Y-m-d H:i:s', strtotime($_POST['custom_expiry']));
+                        // Validate the custom date is in the future
+                        if (strtotime($deletionDate) <= time()) {
+                            throw new Exception('Expiry date must be in the future');
+                        }
+                    } else {
+                        $deletionMinutes = (int)($_POST['deletion_preset'] ?? 10080); // Default 7 days in minutes
+                        $deletionDate = date('Y-m-d H:i:s', strtotime("+{$deletionMinutes} minutes"));
+                    }                    // Initialize options array
                     $options = [
-                        'deletion_date' => $deletionDate,
+                        'expiration_date' => $deletionDate,
                         'password' => !empty($_POST['send_password']) ? $_POST['send_password'] : null,
                         'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
-                        'hide_email' => !empty($_POST['hide_email'])
+                        'anonymous' => !empty($_POST['anonymous'])
                     ];
+                    
+                    // Add file_path to options if file was uploaded
+                    if ($sendType === 'file' && isset($uploadPath)) {
+                        $options['file_path'] = $uploadPath;
+                    }
                     
                     $result = $sendManager->createSend($_SESSION['user_id'], $sendType, $name, $content, $options);
                     
-                    $success = "Secure send created successfully! Share this link: " . 
-                               "http://localhost/SecureIt/backend/access_send.php?link=" . $result['access_link'];
+                    $_SESSION['send_success_link'] = $result['access_link'];
+                    $_SESSION['message'] = "Secure send created successfully!";
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&success=1');
+                    exit();
                     
                 } catch (Exception $e) {
-                    $error = 'Failed to create secure send: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to create secure send: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 }
             }
-            break;
-            
-        case 'delete_send':
+            break;case 'delete_send':
             if ($isLoggedIn && isset($_POST['send_id'])) {
                 try {
                     $sendManager = new SendManager();
                     $sendManager->deleteSend($_POST['send_id'], $_SESSION['user_id']);
-                    $success = 'Send deleted successfully!';
+                    $_SESSION['message'] = 'Send deleted successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to delete send: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to delete send: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
+                }
+            }
+            break;
+              case 'create_emergency_contact':
+            if ($isLoggedIn) {
+                try {
+                    $sendManager = new SendManager();
+                    
+                    // Validate required fields
+                    if (empty($_POST['contact_name'])) {
+                        throw new Exception('Contact name is required');
+                    }
+                    if (empty($_POST['contact_email'])) {
+                        throw new Exception('Contact email is required');
+                    }
+                    if (!filter_var($_POST['contact_email'], FILTER_VALIDATE_EMAIL)) {
+                        throw new Exception('Please enter a valid email address');
+                    }
+                    if (empty($_POST['relationship'])) {
+                        throw new Exception('Please select a relationship');
+                    }
+                    if (empty($_POST['emergency_items']) || !is_array($_POST['emergency_items'])) {
+                        throw new Exception('Please select at least one vault item for emergency access');
+                    }
+                    if (empty($_POST['emergency_instructions'])) {
+                        throw new Exception('Emergency instructions are required');
+                    }
+                    
+                    // Build options array
+                    $options = [
+                        'relationship' => $_POST['relationship'],
+                        'instructions' => trim($_POST['emergency_instructions']),
+                        'trigger_type' => $_POST['trigger_type'] ?? 'manual',
+                        'inactivity_days' => (int)($_POST['inactivity_days'] ?? 30),
+                        'access_password' => !empty($_POST['emergency_access_password']) ? $_POST['emergency_access_password'] : null,
+                        'expiry_days' => 365 // Emergency contacts last 1 year
+                    ];
+                    
+                    $result = $sendManager->createEmergencyContact(
+                        $_SESSION['user_id'],
+                        $_POST['contact_name'],
+                        $_POST['contact_email'],
+                        $_POST['emergency_items'],
+                        $options
+                    );
+                    
+                    $_SESSION['emergency_success_data'] = $result;
+                    $_SESSION['message'] = "Emergency contact created successfully!";
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&emergency_success=1');
+                    exit();
+                    
+                } catch (Exception $e) {
+                    $_SESSION['message'] = 'Failed to setup emergency contact: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();                }
+            }
+            break;        case 'create_credential_delivery':
+            if ($isLoggedIn) {
+                try {
+                    $sendManager = new SendManager();
+                    
+                    // Validate required fields
+                    if (empty($_POST['recipient_email'])) {
+                        throw new Exception('Recipient email is required');
+                    }
+                    if (!filter_var($_POST['recipient_email'], FILTER_VALIDATE_EMAIL)) {
+                        throw new Exception('Please enter a valid email address');
+                    }
+                    if (empty($_POST['vault_item_id'])) {
+                        throw new Exception('Please select a vault item for credential delivery');
+                    }
+                      // Build options array
+                    $options = [
+                        'message' => trim($_POST['message'] ?? ''),
+                        'access_password' => !empty($_POST['access_password']) ? $_POST['access_password'] : null,
+                        'expiry_hours' => (int)($_POST['expiry_hours'] ?? 24), // Default 24 hours for credential delivery
+                        'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null
+                    ];
+                    
+                    $result = $sendManager->createCredentialDelivery(
+                        $_SESSION['user_id'],
+                        $_POST['vault_item_id'],
+                        $_POST['recipient_email'],
+                        $options
+                    );
+                    
+                    $_SESSION['send_success_link'] = $result['access_link'];
+                    $_SESSION['message'] = "Credential delivery created successfully!";
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&credential_success=1');
+                    exit();
+                    
+                } catch (Exception $e) {
+                    $_SESSION['message'] = 'Failed to create credential delivery: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 }
             }
             break;
@@ -160,11 +395,19 @@ if ($isLoggedIn) {
         $vault = new Vault();
         $vaultItems = $vault->getUserItems($_SESSION['user_id']);
         $vaultStats = $vault->getVaultStats($_SESSION['user_id']);
-        
-        // Load send data
+          // Load send data
         $sendManager = new SendManager();
         $userSends = $sendManager->getUserSends($_SESSION['user_id']);
         $sendStats = $sendManager->getSendStats($_SESSION['user_id']);
+        
+        // Ensure sendStats has all required keys
+        $sendStats = array_merge([
+            'total_sends' => 0,
+            'active_sends' => 0,
+            'expired_sends' => 0,
+            'exhausted_sends' => 0,
+            'total_views' => 0
+        ], $sendStats);
     } catch (Exception $e) {
         $error = 'Failed to load data: ' . $e->getMessage();
     }
@@ -1343,9 +1586,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         .strength-fair { color: #d97706; }
         .strength-good { color: #16a34a; }
         .strength-strong { color: #059669; }
-        .strength-very-strong { color: #047857; }
-
-        /* History Section Styles */
+        .strength-very-strong { color: #047857; }        /* History Section Styles */
         .history-section {
             margin-top: 2rem;
             padding: 1.5rem 2rem;
@@ -1455,6 +1696,288 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             color: #64748b;
             font-style: italic;
             padding: 2rem;
+        }
+
+        /* Vault Items Selection Styles */
+        .vault-items-selection {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .vault-item-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .vault-item-checkbox:last-child {
+            border-bottom: none;
+        }
+
+        .vault-item-checkbox:hover {
+            background: #f8fafc;
+        }
+
+        .vault-item-checkbox input[type="checkbox"] {
+            margin-right: 1rem;
+            transform: scale(1.2);
+        }
+
+        .vault-item-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .vault-item-icon {
+            width: 40px;
+            height: 40px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+            color: var(--primary);
+        }
+
+        .vault-item-details {
+            flex: 1;
+        }
+
+        .item-name {
+            display: block;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .item-type {
+            display: inline-block;
+            background: #e5e7eb;
+            color: #64748b;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+
+        .item-url {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .no-items {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 2rem;
+        }
+
+        .error-message {
+            color: #dc2626;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        /* Radio Group Styles */
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .radio-label:hover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.02);
+        }
+
+        .radio-label input[type="radio"] {
+            display: none;
+        }
+
+        .radio-custom {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #d1d5db;
+            border-radius: 50%;
+            background: white;
+            transition: all 0.3s ease;
+            position: relative;
+            flex-shrink: 0;
+            margin-right: 1rem;
+        }
+
+        .radio-label input[type="radio"]:checked + .radio-custom {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .radio-label input[type="radio"]:checked + .radio-custom::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .radio-content {
+            flex: 1;
+        }
+
+        .radio-content strong {
+            display: block;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }        .radio-content small {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        /* Enhanced File Upload Styles */
+        .file-upload-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            margin-bottom: 1rem;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #9ca3af;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text strong {
+            display: block;
+            color: var(--dark);
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-text p {
+            color: #64748b;
+            font-size: 0.875rem;
+            margin: 0;
+        }
+
+        .file-input {
+            display: none !important;
+        }
+
+        .file-preview {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .file-icon {
+            width: 48px;
+            height: 48px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            display: block;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .file-size, .file-type {
+            display: inline-block;
+            background: #e5e7eb;
+            color: #64748b;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+        }
+
+        .remove-file {
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .remove-file:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        .image-preview-container {
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .image-preview-container img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         /* Enhanced Generator Styles */
@@ -1724,10 +2247,24 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-weight: 600;
             transition: all 0.3s ease;
             background: white;
+        }        .number-input-enhanced:focus, .length-input-enhanced:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        .number-input-enhanced:focus, .length-input-enhanced:focus {
-            outline: none;
+        .custom-length-section {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .custom-length-input {
+            margin-top: 0.75rem;
+            max-width: 200px;
+        }
+
+        .custom-length-input:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
@@ -2085,13 +2622,26 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-size: 0.75rem;
             color: var(--gray);
             margin-top: 0.25rem;
-        }
-
-        .textarea-counter {
+        }        .textarea-counter {
             text-align: right;
             font-size: 0.75rem;
             color: var(--gray);
             margin-top: 0.25rem;
+        }
+        
+        .expiry-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .expiry-option {
+            transition: all 0.2s ease;
+        }
+        
+        .expiry-option select,
+        .expiry-option input {
+            width: 100%;
         }
 
         .email-preview {
@@ -2564,10 +3114,19 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             gap: 0.5rem;
-        }
-
-        .send-title i {
+        }        .send-title i {
             color: var(--primary);
+        }
+        
+        .storage-badge {
+            background: linear-gradient(135deg, #059669, #065f46);
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            margin-left: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
 
         .send-meta {
@@ -3090,8 +3649,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 </div>
 
                 <!-- Content Area -->
-                <div class="content-area">
-                    <?php if ($error): ?>
+                <div class="content-area">                    <?php if ($error): ?>
                         <div class="alert alert-error">
                             <i class="fas fa-exclamation-circle"></i>
                             <?= htmlspecialchars($error) ?>
@@ -3102,6 +3660,45 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                         <div class="alert alert-success">
                             <i class="fas fa-check-circle"></i>
                             <?= htmlspecialchars($success) ?>
+                            
+                            <?php if ($sendSuccessLink): ?>
+                                <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                                    <strong>Share this secure link:</strong><br>
+                                    <div style="display: flex; align-items: center; margin-top: 8px;">
+                                        <input type="text" 
+                                               value="http://localhost/SecureIt/backend/access_send.php?link=<?= htmlspecialchars($sendSuccessLink) ?>" 
+                                               readonly 
+                                               id="sendLink"
+                                               style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: monospace; font-size: 12px;">
+                                        <button onclick="copyToClipboard('sendLink')" 
+                                                style="margin-left: 10px; padding: 8px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <i class="fas fa-copy"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <?php if ($emergencySuccessData): ?>
+                                <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                                    <strong>Emergency contact setup complete!</strong><br>
+                                    <div style="margin-top: 8px;">
+                                        <strong>Contact:</strong> <?= htmlspecialchars($emergencySuccessData['contact_name']) ?> (<?= htmlspecialchars($emergencySuccessData['contact_email']) ?>)<br>
+                                        <strong>Access to:</strong> <?= $emergencySuccessData['vault_items_count'] ?> vault items<br>
+                                        <strong>Valid until:</strong> <?= date('M j, Y', strtotime($emergencySuccessData['expires_at'])) ?>
+                                    </div>
+                                    <div style="display: flex; align-items: center; margin-top: 8px;">
+                                        <input type="text" 
+                                               value="http://localhost/SecureIt/backend/access_send.php?link=<?= htmlspecialchars($emergencySuccessData['access_link']) ?>" 
+                                               readonly 
+                                               id="emergencyLink"
+                                               style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: monospace; font-size: 12px;">
+                                        <button onclick="copyToClipboard('emergencyLink')" 
+                                                style="margin-left: 10px; padding: 8px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <i class="fas fa-copy"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>                    <?php if ($currentSection === 'dashboard'): ?>
                         <!-- Dashboard Content -->
@@ -3375,8 +3972,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </button>
                                         <button class="action-btn-enhanced secondary" onclick="copyGeneratedValue()" title="Copy to clipboard" id="copyBtn">
                                             <i class="fas fa-copy"></i>
-                                        </button>
-                                        <button class="action-btn-enhanced tertiary" onclick="addToHistory()" title="Save to history" id="saveBtn">
+                                        </button>                                        <button class="action-btn-enhanced tertiary" onclick="addToHistory()" title="Save to generator history" id="saveBtn">
                                             <i class="fas fa-bookmark"></i>
                                         </button>
                                     </div>
@@ -3420,18 +4016,27 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                 <div class="length-display">
                                                     <span id="lengthValue">14</span> characters
                                                 </div>
-                                            </div>
-                                            <div class="slider-container">
-                                                <input type="range" id="passwordLengthSlider" min="5" max="128" value="14" class="length-slider" onchange="updateLengthDisplay(); autoGenerate()">
+                                            </div>                                            <div class="slider-container">
+                                                <input type="range" id="passwordLengthSlider" min="5" max="256" value="14" class="length-slider" onchange="updateLengthDisplay(); autoGenerate()">
                                                 <div class="slider-labels">
                                                     <span>5</span>
                                                     <span>Weak</span>
                                                     <span>Good</span>
                                                     <span>Strong</span>
-                                                    <span>128</span>
+                                                    <span>256+</span>
                                                 </div>
                                             </div>
-                                            <input type="number" id="passwordLength" min="5" max="128" value="14" class="length-input-enhanced" onchange="syncSlider(); autoGenerate()" style="display: none;">
+                                            <div class="custom-length-section">
+                                                <label class="checkbox-label-enhanced">
+                                                    <input type="checkbox" id="useCustomLength" onchange="toggleCustomLength()">
+                                                    <span class="checkbox-custom"></span>
+                                                    <div class="checkbox-content">
+                                                        <span class="checkbox-title">Custom Length</span>
+                                                        <span class="checkbox-example">Enter any length</span>
+                                                    </div>
+                                                </label>
+                                                <input type="number" id="passwordLength" min="5" value="14" class="length-input-enhanced custom-length-input" onchange="syncCustomLength(); autoGenerate()" style="display: none;" placeholder="Enter custom length">
+                                            </div>
                                         </div>
 
                                         <div class="option-group-enhanced">
@@ -3569,147 +4174,44 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-
-                                <!-- Generator History -->
+                                </div>                                <!-- Generator History -->
                                 <div class="history-section">
-                                    <button class="history-toggle" onclick="toggleHistory()">
-                                        Generator history
-                                    </button>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <button class="history-toggle" onclick="toggleHistory()">
+                                            <i class="fas fa-history"></i>
+                                            Generator History
+                                        </button>
+                                        <button class="btn btn-secondary btn-sm" onclick="clearGeneratorHistory()" style="display: none;" id="clearHistoryBtn">
+                                            <i class="fas fa-trash"></i> Clear History
+                                        </button>
+                                    </div>
                                     
                                     <div id="historyContent" class="history-content" style="display: none;">
-                                        <p class="no-history">No history available</p>
-                                    </div>                                </div>
+                                        <p class="no-history">No history available. Generate and save some values to see them here.</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                     <?php elseif ($currentSection === 'send'): ?>
                         <!-- Send Section -->
-                        <div class="send-container">
-                            <!-- Send Tabs -->
+                        <div class="send-container">                            <!-- Send Tabs -->
                             <div class="send-tabs">
-                                <button class="send-tab-button active" data-tab="email" onclick="switchSendTab('email')">
-                                    <i class="fas fa-at"></i> Anonymous Email
-                                </button>
-                                <button class="send-tab-button" data-tab="secure" onclick="switchSendTab('secure')">
+                                <button class="send-tab-button active" data-tab="secure" onclick="switchSendTab('secure')">
                                     <i class="fas fa-shield-check"></i> Secure Send
+                                </button>
+                                <button class="send-tab-button" data-tab="credential" onclick="switchSendTab('credential')">
+                                    <i class="fas fa-clipboard-list"></i> Credential Delivery
+                                </button>
+                                <button class="send-tab-button" data-tab="emergency" onclick="switchSendTab('emergency')">
+                                    <i class="fas fa-phone-alt"></i> Emergency Contact
                                 </button>
                                 <button class="send-tab-button" data-tab="manage" onclick="switchSendTab('manage')">
                                     <i class="fas fa-tasks"></i> Manage Sends
-                                </button>
-                            </div>
-
-                            <!-- Anonymous Email Tab -->
-                            <div id="emailTab" class="send-tab-content active">
-                                <div class="card enhanced-card">
-                                    <div class="card-header gradient-header">
-                                        <h2 class="card-title">
-                                            <i class="fas fa-user-secret"></i> Send Anonymous Email
-                                        </h2>
-                                        <p class="card-description">Send emails anonymously with professional templates. Your identity remains completely protected.</p>
-                                        <div class="feature-badges">
-                                            <span class="badge badge-success"><i class="fas fa-user-secret"></i> Anonymous</span>
-                                            <span class="badge badge-info"><i class="fas fa-envelope-open-text"></i> Professional Templates</span>
-                                            <span class="badge badge-warning"><i class="fas fa-bolt"></i> Instant Delivery</span>
-                                        </div>
-                                    </div>
-                                    <div class="card-body">
-                                        <form method="POST" id="anonymousEmailForm" class="enhanced-form">
-                                            <input type="hidden" name="action" value="send_anonymous_email">
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-mail-bulk"></i> Email Configuration</h4>
-                                                <div class="form-row">
-                                                    <div class="form-group">
-                                                        <label for="from_email" class="enhanced-label">
-                                                            <i class="fas fa-user-secret"></i> Anonymous Sender Email
-                                                        </label>
-                                                        <input type="email" id="from_email" name="from_email" class="enhanced-input" 
-                                                               placeholder="Enter the email address you want to appear as sender" required>
-                                                        <small class="form-help">This email will appear as the sender to the recipient</small>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="to_email" class="enhanced-label">
-                                                            <i class="fas fa-inbox"></i> Recipient Email
-                                                        </label>
-                                                        <input type="email" id="to_email" name="to_email" class="enhanced-input" 
-                                                               placeholder="Enter recipient's email address" required>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-edit"></i> Message Content</h4>
-                                                <div class="form-group">
-                                                    <label for="subject" class="enhanced-label">
-                                                        <i class="fas fa-tag"></i> Subject Line
-                                                    </label>
-                                                    <input type="text" id="subject" name="subject" class="enhanced-input" 
-                                                           placeholder="Enter email subject" required>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="sender_note" class="enhanced-label">
-                                                        <i class="fas fa-sticky-note"></i> Sender Note (Optional)
-                                                    </label>
-                                                    <input type="text" id="sender_note" name="sender_note" class="enhanced-input" 
-                                                           placeholder="Optional note about the sender (e.g., 'From a concerned friend')">
-                                                    <small class="form-help">This will appear in the email template for context</small>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="message" class="enhanced-label">
-                                                        <i class="fas fa-comment-alt"></i> Your Message
-                                                    </label>
-                                                    <textarea id="message" name="message" class="enhanced-input enhanced-textarea" rows="8" 
-                                                              placeholder="Enter your message here..." required></textarea>
-                                                    <div class="textarea-counter">
-                                                        <span id="messageCounter">0</span> characters
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-eye"></i> Email Preview</h4>
-                                                <div class="email-preview">
-                                                    <div class="preview-container">
-                                                        <div class="preview-header">
-                                                            <div class="preview-title">📧 Anonymous Message</div>
-                                                            <div class="preview-badge">SecureIt Delivery</div>
-                                                        </div>
-                                                        <div class="preview-content">
-                                                            <div class="preview-note">
-                                                                <i class="fas fa-shield-alt"></i> 
-                                                                <strong>Note:</strong> This is an anonymous message sent through SecureIt's secure system.
-                                                            </div>
-                                                            <div class="preview-sender-note" id="senderNotePreview" style="display: none;"></div>
-                                                            <div class="preview-message" id="messagePreview">
-                                                                <em>Your message will appear here as you type...</em>
-                                                            </div>
-                                                            <div class="preview-footer">
-                                                                <small>This message was sent anonymously through SecureIt's secure messaging system.</small>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-actions">
-                                                <button type="button" class="btn btn-secondary" onclick="clearEmailForm()">
-                                                    <i class="fas fa-eraser"></i> Clear Form
-                                                </button>
-                                                <button type="submit" class="btn btn-primary btn-enhanced">
-                                                    <i class="fas fa-paper-plane"></i> Send Anonymous Email
-                                                    <span class="btn-animation"></span>
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
+                                </button>                            </div>
 
                             <!-- Secure Send Tab -->
-                            <div id="secureTab" class="send-tab-content">
+                            <div id="secureTab" class="send-tab-content active">
                                 <div class="card enhanced-card">
                                     <div class="card-header gradient-header">
                                         <h2 class="card-title">
@@ -3769,32 +4271,81 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                             <span id="textCounter">0</span> characters
                                                         </div>
                                                     </div>
-                                                </div>
-                                                  <div id="fileContent" class="content-section" style="display: none;">
+                                                </div>                                <div id="fileContent" class="content-section" style="display: none;">
                                                     <div class="form-group">
                                                         <label for="send_file" class="enhanced-label">
-                                                            <i class="fas fa-upload"></i> Choose File
+                                                            <i class="fas fa-upload"></i> Choose File or Image
                                                         </label>
-                                                        <input type="file" id="send_file" name="send_file" class="enhanced-input">
-                                                        <small class="form-help">Maximum file size: 10MB. Supported formats: PDF, DOC, TXT, ZIP, etc.</small>
+                                                        <div class="file-upload-area" onclick="document.getElementById('send_file').click()">
+                                                            <div class="upload-icon">
+                                                                <i class="fas fa-cloud-upload-alt"></i>
+                                                            </div>
+                                                            <div class="upload-text">
+                                                                <strong>Click to upload or drag & drop</strong>
+                                                                <p>Support for images (JPG, PNG, GIF), documents (PDF, DOC, TXT), archives (ZIP, RAR) and more</p>
+                                                            </div>
+                                                        </div>
+                                                        <input type="file" id="send_file" name="send_file" class="enhanced-input file-input" 
+                                                               accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar,.csv,.xlsx,.ppt,.pptx" 
+                                                               onchange="handleFileSelection(this)">
+                                                        <div id="file-preview" class="file-preview" style="display: none;">
+                                                            <div class="file-info">
+                                                                <div class="file-icon">
+                                                                    <i class="fas fa-file"></i>
+                                                                </div>
+                                                                <div class="file-details">
+                                                                    <span class="file-name"></span>
+                                                                    <span class="file-size"></span>
+                                                                    <span class="file-type"></span>
+                                                                </div>
+                                                                <button type="button" class="remove-file" onclick="removeFile()">
+                                                                    <i class="fas fa-times"></i>
+                                                                </button>
+                                                            </div>
+                                                            <div id="image-preview" class="image-preview-container" style="display: none;">
+                                                                <img id="preview-image" src="" alt="Preview" />
+                                                            </div>
+                                                        </div>
+                                                        <small class="form-help">Maximum file size: 25MB. Images will be displayed as previews to recipients.</small>
                                                     </div>
                                                 </div>
                                             </div>
                                             
                                             <div class="form-section">
                                                 <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Options</h4>
-                                                
-                                                <div class="form-group">
-                                                    <label for="deletion_days" class="enhanced-label">
+                                                  <div class="form-group">
+                                                    <label for="expiry_type" class="enhanced-label">
                                                         <i class="fas fa-calendar-times"></i> Auto-Delete After
                                                     </label>
-                                                    <select id="deletion_days" name="deletion_days" class="enhanced-input">
-                                                        <option value="1">1 Day</option>
-                                                        <option value="3">3 Days</option>
-                                                        <option value="7" selected>7 Days</option>
-                                                        <option value="14">14 Days</option>
-                                                        <option value="30">30 Days</option>
-                                                    </select>
+                                                    <div class="expiry-controls">
+                                                        <select id="expiry_type" name="expiry_type" class="enhanced-input" onchange="toggleExpiryType()">
+                                                            <option value="preset">Quick Options</option>
+                                                            <option value="custom">Custom Date & Time</option>
+                                                        </select>
+                                                        
+                                                        <!-- Quick preset options -->
+                                                        <div id="preset_options" class="expiry-option">
+                                                            <select id="deletion_preset" name="deletion_preset" class="enhanced-input">
+                                                                <option value="30">30 Minutes</option>
+                                                                <option value="60">1 Hour</option>
+                                                                <option value="180">3 Hours</option>
+                                                                <option value="360">6 Hours</option>
+                                                                <option value="720">12 Hours</option>
+                                                                <option value="1440">1 Day</option>
+                                                                <option value="4320">3 Days</option>
+                                                                <option value="10080" selected>7 Days</option>
+                                                                <option value="20160">14 Days</option>
+                                                                <option value="43200">30 Days</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <!-- Custom date/time picker -->
+                                                        <div id="custom_options" class="expiry-option" style="display: none;">
+                                                            <input type="datetime-local" id="custom_expiry" name="custom_expiry" class="enhanced-input"
+                                                                   min="<?php echo date('Y-m-d\TH:i', strtotime('+30 minutes')); ?>"
+                                                                   value="<?php echo date('Y-m-d\TH:i', strtotime('+7 days')); ?>">
+                                                        </div>
+                                                    </div>
                                                     <small class="form-help">The send will be permanently deleted after this time</small>
                                                 </div>
                                                 
@@ -3819,16 +4370,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                     <input type="number" id="max_views" name="max_views" class="enhanced-input" 
                                                            placeholder="e.g., 5" min="1" max="100">
                                                     <small class="form-help">Limit how many times this send can be viewed before it's deleted</small>
+                                                </div>                                                <div class="form-group">
+                                                    <div class="checkbox-group">
+                                                        <input type="checkbox" id="anonymous" name="anonymous" class="enhanced-checkbox">
+                                                        <label for="anonymous" class="checkbox-label">
+                                                            <i class="fas fa-user-secret"></i> Send anonymously (hide sender name)                                                        </label>
+                                                    </div>
+                                                    <small class="form-help">When enabled, recipients won't see who sent the message</small>
                                                 </div>
                                                 
                                                 <div class="form-group">
                                                     <div class="checkbox-group">
-                                                        <input type="checkbox" id="hide_email" name="hide_email" class="enhanced-checkbox">
-                                                        <label for="hide_email" class="checkbox-label">
-                                                            <i class="fas fa-user-secret"></i> Hide my email address from recipients
+                                                        <input type="checkbox" id="allow_download" name="allow_download" class="enhanced-checkbox" checked>
+                                                        <label for="allow_download" class="checkbox-label">
+                                                            <i class="fas fa-download"></i> Allow file downloads
                                                         </label>
                                                     </div>
-                                                    <small class="form-help">When enabled, recipients won't see who sent the message</small>
+                                                    <small class="form-help">Enable recipients to download shared files and images</small>
                                                 </div>
                                             </div>
                                             
@@ -3838,6 +4396,351 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                 </button>
                                                 <button type="submit" class="btn btn-primary btn-enhanced">
                                                     <i class="fas fa-lock"></i> Create Secure Send
+                                                    <span class="btn-animation"></span>
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>                                </div>
+                            </div>
+
+                            <!-- Credential Delivery Tab -->
+                            <div id="credentialTab" class="send-tab-content">
+                                <div class="card enhanced-card">
+                                    <div class="card-header gradient-header">
+                                        <h2 class="card-title">
+                                            <i class="fas fa-clipboard-list"></i> Credential Delivery
+                                        </h2>
+                                        <p class="card-description">Share vault items (logins, cards, notes) securely with temporary access links. Perfect for team or family account sharing.</p>
+                                        <div class="feature-badges">
+                                            <span class="badge badge-success"><i class="fas fa-vault"></i> From Vault</span>
+                                            <span class="badge badge-info"><i class="fas fa-clock"></i> Temporary Access</span>
+                                            <span class="badge badge-warning"><i class="fas fa-ban"></i> Revokable</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <form method="POST" id="credentialDeliveryForm" class="enhanced-form">
+                                            <input type="hidden" name="action" value="create_credential_delivery">
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Item</h4>
+                                                <div class="form-group">
+                                                    <label for="vault_item_id" class="enhanced-label">
+                                                        <i class="fas fa-search"></i> Choose Item to Share
+                                                    </label>
+                                                    <select id="vault_item_id" name="vault_item_id" class="enhanced-input" required>
+                                                        <option value="">Select a vault item...</option>
+                                                        <?php if ($isLoggedIn): ?>
+                                                            <?php
+                                                            try {
+                                                                $vault = new Vault();
+                                                                $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                foreach ($allItems as $item):
+                                                                    $itemIcon = '';
+                                                                    switch ($item['item_type']) {
+                                                                        case 'login': $itemIcon = '🔐'; break;
+                                                                        case 'card': $itemIcon = '💳'; break;
+                                                                        case 'identity': $itemIcon = '🆔'; break;
+                                                                        case 'note': $itemIcon = '📝'; break;
+                                                                        default: $itemIcon = '🔑';
+                                                                    }
+                                                            ?>
+                                                                <option value="<?= $item['id'] ?>" data-type="<?= $item['item_type'] ?>">
+                                                                    <?= $itemIcon ?> <?= htmlspecialchars($item['item_name']) ?> (<?= ucfirst($item['item_type']) ?>)
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                            <?php } catch (Exception $e) { ?>
+                                                                <option value="">Error loading vault items</option>
+                                                            <?php } ?>
+                                                        <?php endif; ?>
+                                                    </select>
+                                                    <small class="form-help">Select which vault item you want to share temporarily</small>
+                                                </div>
+                                                
+                                                <div class="form-group">
+                                                    <label for="credential_recipient" class="enhanced-label">
+                                                        <i class="fas fa-user"></i> Recipient Email
+                                                    </label>
+                                                    <input type="email" id="credential_recipient" name="recipient_email" class="enhanced-input" 
+                                                           placeholder="Enter recipient's email address" required>
+                                                    <small class="form-help">Who will receive access to this credential</small>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-clock"></i> Access Settings</h4>
+                                                <div class="form-group">
+                                                    <label for="credential_expiry" class="enhanced-label">
+                                                        <i class="fas fa-hourglass-half"></i> Access Duration
+                                                    </label>
+                                                    <select id="credential_expiry" name="expiry_hours" class="enhanced-input" required>
+                                                        <option value="1">1 Hour</option>
+                                                        <option value="6">6 Hours</option>
+                                                        <option value="12">12 Hours</option>
+                                                        <option value="24" selected>24 Hours (1 Day)</option>
+                                                        <option value="72">72 Hours (3 Days)</option>
+                                                        <option value="168">1 Week</option>
+                                                    </select>
+                                                    <small class="form-help">How long the recipient can access this credential</small>
+                                                </div>
+                                                
+                                                <div class="form-group">
+                                                    <label for="credential_max_views" class="enhanced-label">
+                                                        <i class="fas fa-eye"></i> Maximum Views (Optional)
+                                                    </label>
+                                                    <input type="number" id="credential_max_views" name="max_views" class="enhanced-input" 
+                                                           placeholder="e.g., 3" min="1" max="50">
+                                                    <small class="form-help">Limit how many times this credential can be viewed</small>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Options</h4>
+                                                <div class="form-group">
+                                                    <div class="checkbox-group">
+                                                        <input type="checkbox" id="require_password_credential" name="require_password" class="enhanced-checkbox">
+                                                        <label for="require_password_credential" class="checkbox-label">
+                                                            <i class="fas fa-lock"></i> Require password to access
+                                                        </label>
+                                                    </div>
+                                                    
+                                                    <div id="credential_password_section" style="display: none; margin-top: 1rem;">
+                                                        <label for="credential_access_password" class="enhanced-label">
+                                                            <i class="fas fa-key"></i> Access Password
+                                                        </label>
+                                                        <div class="password-input-group">
+                                                            <input type="password" id="credential_access_password" name="access_password" class="enhanced-input password-input" 
+                                                                   placeholder="Enter access password">
+                                                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('credential_access_password')">
+                                                                <i class="fas fa-eye" id="credential_access_password_icon"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-comment-alt"></i> Optional Message</h4>
+                                                <div class="form-group">
+                                                    <label for="credential_message" class="enhanced-label">
+                                                        <i class="fas fa-envelope"></i> Message to Recipient
+                                                    </label>
+                                                    <textarea id="credential_message" name="message" class="enhanced-input enhanced-textarea" rows="4" 
+                                                              placeholder="Optional message explaining why you're sharing this credential..."></textarea>
+                                                    <div class="textarea-counter">
+                                                        <span id="credentialMessageCounter">0</span> characters
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-actions">
+                                                <button type="button" class="btn btn-secondary" onclick="clearCredentialForm()">
+                                                    <i class="fas fa-eraser"></i> Clear Form
+                                                </button>
+                                                <button type="submit" class="btn btn-primary btn-enhanced">
+                                                    <i class="fas fa-share-alt"></i> Create Credential Delivery
+                                                    <span class="btn-animation"></span>
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Emergency Contact Delivery Tab -->
+                            <div id="emergencyTab" class="send-tab-content">
+                                <div class="card enhanced-card">
+                                    <div class="card-header gradient-header">
+                                        <h2 class="card-title">
+                                            <i class="fas fa-phone-alt"></i> Emergency Contact Delivery
+                                        </h2>
+                                        <p class="card-description">Protect your digital legacy by allowing trusted contacts to access selected vault items in emergencies or after periods of inactivity.</p>
+                                        <div class="feature-badges">
+                                            <span class="badge badge-success"><i class="fas fa-heart"></i> Digital Legacy</span>
+                                            <span class="badge badge-info"><i class="fas fa-user-shield"></i> Trusted Contacts</span>
+                                            <span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> Emergency Only</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <form method="POST" id="emergencyContactForm" class="enhanced-form">
+                                            <input type="hidden" name="action" value="create_emergency_contact">
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-user-friends"></i> Emergency Contact</h4>
+                                                <div class="form-group">
+                                                    <label for="emergency_contact_name" class="enhanced-label">
+                                                        <i class="fas fa-user"></i> Contact Name
+                                                    </label>
+                                                    <input type="text" id="emergency_contact_name" name="contact_name" class="enhanced-input" 
+                                                           placeholder="Enter trusted contact's name" required>
+                                                    <small class="form-help">Full name of your trusted emergency contact</small>
+                                                </div>
+                                                
+                                                <div class="form-group">
+                                                    <label for="emergency_contact_email" class="enhanced-label">
+                                                        <i class="fas fa-envelope"></i> Contact Email
+                                                    </label>
+                                                    <input type="email" id="emergency_contact_email" name="contact_email" class="enhanced-input" 
+                                                           placeholder="Enter contact's email address" required>
+                                                    <small class="form-help">Email address where emergency access will be sent</small>
+                                                </div>
+                                                
+                                                <div class="form-group">
+                                                    <label for="emergency_relationship" class="enhanced-label">
+                                                        <i class="fas fa-heart"></i> Relationship
+                                                    </label>
+                                                    <select id="emergency_relationship" name="relationship" class="enhanced-input" required>
+                                                        <option value="">Select relationship...</option>
+                                                        <option value="spouse">Spouse</option>
+                                                        <option value="partner">Partner</option>
+                                                        <option value="parent">Parent</option>
+                                                        <option value="child">Child</option>
+                                                        <option value="sibling">Sibling</option>
+                                                        <option value="friend">Trusted Friend</option>
+                                                        <option value="lawyer">Lawyer</option>
+                                                        <option value="executor">Executor</option>
+                                                        <option value="other">Other</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Items</h4>
+                                                <div class="form-group">
+                                                    <label class="enhanced-label">
+                                                        <i class="fas fa-list-check"></i> Items to Include in Emergency Access
+                                                    </label>
+                                                    <div class="vault-items-selection">
+                                                        <?php if ($isLoggedIn): ?>
+                                                            <?php
+                                                            try {
+                                                                $vault = new Vault();
+                                                                $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                if (empty($allItems)):
+                                                            ?>
+                                                                <p class="no-items">No vault items found. Add some items to your vault first.</p>
+                                                            <?php else: ?>
+                                                                <?php foreach ($allItems as $item): ?>
+                                                                    <label class="vault-item-checkbox">
+                                                                        <input type="checkbox" name="emergency_items[]" value="<?= $item['id'] ?>" class="enhanced-checkbox">
+                                                                        <div class="vault-item-info">
+                                                                            <div class="vault-item-icon">
+                                                                                <?php
+                                                                                switch ($item['item_type']) {
+                                                                                    case 'login': echo '<i class="fas fa-sign-in-alt"></i>'; break;
+                                                                                    case 'card': echo '<i class="fas fa-credit-card"></i>'; break;
+                                                                                    case 'identity': echo '<i class="fas fa-id-card"></i>'; break;
+                                                                                    case 'note': echo '<i class="fas fa-sticky-note"></i>'; break;
+                                                                                    default: echo '<i class="fas fa-key"></i>';
+                                                                                }
+                                                                                ?>
+                                                                            </div>
+                                                                            <div class="vault-item-details">
+                                                                                <span class="item-name"><?= htmlspecialchars($item['item_name']) ?></span>
+                                                                                <span class="item-type"><?= ucfirst($item['item_type']) ?></span>
+                                                                                <?php if ($item['website_url']): ?>
+                                                                                    <span class="item-url"><?= htmlspecialchars($item['website_url']) ?></span>
+                                                                                <?php endif; ?>
+                                                                            </div>
+                                                                        </div>
+                                                                    </label>
+                                                                <?php endforeach; ?>
+                                                            <?php endif; ?>
+                                                            <?php } catch (Exception $e) { ?>
+                                                                <p class="error-message">Error loading vault items: <?= htmlspecialchars($e->getMessage()) ?></p>
+                                                            <?php } ?>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <small class="form-help">Select which vault items your emergency contact can access</small>                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Settings</h4>
+                                                <div class="form-group">
+                                                    <div class="checkbox-group">
+                                                        <input type="checkbox" id="require_emergency_password" name="require_emergency_password" class="enhanced-checkbox">
+                                                        <label for="require_emergency_password" class="checkbox-label">
+                                                            <i class="fas fa-lock"></i> Require custom password for access
+                                                        </label>
+                                                    </div>
+                                                    <small class="form-help">Add an extra layer of security with a custom password</small>
+                                                    
+                                                    <div id="emergency_password_section" style="display: none; margin-top: 1rem;">
+                                                        <label for="emergency_access_password" class="enhanced-label">
+                                                            <i class="fas fa-key"></i> Custom Access Password
+                                                        </label>
+                                                        <div class="password-input-group">
+                                                            <input type="password" id="emergency_access_password" name="emergency_access_password" class="enhanced-input password-input" 
+                                                                   placeholder="Enter custom password for emergency access">
+                                                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('emergency_access_password')">
+                                                                <i class="fas fa-eye" id="emergency_access_password_icon"></i>
+                                                            </button>
+                                                        </div>
+                                                        <small class="form-help">Share this password securely with your emergency contact</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-exclamation-triangle"></i> Trigger Conditions</h4>
+                                                <div class="form-group">
+                                                    <label class="enhanced-label">
+                                                        <i class="fas fa-clock"></i> Automatic Trigger
+                                                    </label>
+                                                    <div class="radio-group">
+                                                        <label class="radio-label">
+                                                            <input type="radio" name="trigger_type" value="inactivity" checked>
+                                                            <span class="radio-custom"></span>
+                                                            <div class="radio-content">
+                                                                <strong>Inactivity Trigger</strong>
+                                                                <small>Activate after no login for specified period</small>
+                                                            </div>
+                                                        </label>
+                                                        <label class="radio-label">
+                                                            <input type="radio" name="trigger_type" value="manual">
+                                                            <span class="radio-custom"></span>
+                                                            <div class="radio-content">
+                                                                <strong>Manual Only</strong>
+                                                                <small>Only activate when manually triggered</small>
+                                                            </div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div id="inactivity_settings" class="form-group">
+                                                    <label for="inactivity_days" class="enhanced-label">
+                                                        <i class="fas fa-calendar-times"></i> Inactivity Period
+                                                    </label>
+                                                    <select id="inactivity_days" name="inactivity_days" class="enhanced-input">
+                                                        <option value="30" selected>30 Days</option>
+                                                        <option value="60">60 Days</option>
+                                                        <option value="90">90 Days</option>
+                                                        <option value="180">6 Months</option>
+                                                        <option value="365">1 Year</option>
+                                                    </select>
+                                                    <small class="form-help">Emergency access will be triggered if you don't log in for this period</small>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-envelope-open-text"></i> Emergency Message</h4>
+                                                <div class="form-group">
+                                                    <label for="emergency_instructions" class="enhanced-label">
+                                                        <i class="fas fa-scroll"></i> Instructions for Emergency Contact
+                                                    </label>
+                                                    <textarea id="emergency_instructions" name="emergency_instructions" class="enhanced-input enhanced-textarea" rows="6" 
+                                                              placeholder="Write instructions for your emergency contact about what to do with the shared credentials..." required></textarea>
+                                                    <div class="textarea-counter">
+                                                        <span id="emergencyInstructionsCounter">0</span> characters
+                                                    </div>
+                                                    <small class="form-help">Explain to your contact what these credentials are for and how to use them responsibly</small>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-actions">
+                                                <button type="button" class="btn btn-secondary" onclick="clearEmergencyForm()">
+                                                    <i class="fas fa-eraser"></i> Clear Form
+                                                </button>
+                                                <button type="submit" class="btn btn-primary btn-enhanced">
+                                                    <i class="fas fa-shield-heart"></i> Setup Emergency Contact
                                                     <span class="btn-animation"></span>
                                                 </button>
                                             </div>
@@ -3891,31 +4794,40 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                             </div>
                                             
                                             <!-- Sends List -->
-                                            <div class="sends-list">
-                                                <?php foreach ($userSends as $send): ?>
-                                                    <div class="send-item">
+                                            <div class="sends-list">                                                <?php foreach ($userSends as $send): ?>                                                    <div class="send-item">
                                                         <div class="send-info">
                                                             <div class="send-title">
-                                                                <i class="fas fa-<?php echo $send['send_type'] === 'file' ? 'file' : 'text'; ?>"></i>
+                                                                <i class="fas fa-<?php echo $send['type'] === 'file' ? ($send['is_image'] ? 'image' : 'file') : ($send['type'] === 'credential' ? 'key' : 'text'); ?>"></i>
                                                                 <?php echo htmlspecialchars($send['name']); ?>
+                                                                <?php if ($send['type'] === 'file' && $send['is_image']): ?>
+                                                                    <span class="storage-badge">SECURE</span>
+                                                                <?php endif; ?>
                                                             </div>
                                                             <div class="send-meta">
-                                                                <span class="badge badge-<?php echo $send['send_type'] === 'file' ? 'info' : 'secondary'; ?>">
-                                                                    <?php echo ucfirst($send['send_type']); ?>
+                                                                <span class="badge badge-<?php echo $send['type'] === 'file' ? 'info' : ($send['type'] === 'credential' ? 'warning' : 'secondary'); ?>">
+                                                                    <?php echo ucfirst($send['type']); ?>
+                                                                    <?php if ($send['type'] === 'file'): ?>
+                                                                        (<?php echo $send['is_image'] ? 'Image' : 'File'; ?>)
+                                                                    <?php endif; ?>
                                                                 </span>
                                                                 <span class="send-date">
                                                                     Created: <?php echo date('M j, Y', strtotime($send['created_at'])); ?>
                                                                 </span>
                                                                 <span class="send-expire">
-                                                                    Expires: <?php echo date('M j, Y', strtotime($send['deletion_date'])); ?>
+                                                                    Expires: <?php echo date('M j, Y', strtotime($send['expires_at'])); ?>
                                                                 </span>
                                                                 <span class="send-views">
-                                                                    Views: <?php echo $send['current_views']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?>
+                                                                    Views: <?php echo $send['view_count']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?>
                                                                 </span>
+                                                                <?php if ($send['type'] === 'file' && $send['file_size']): ?>
+                                                                    <span class="send-size">
+                                                                        Size: <?php echo number_format($send['file_size']); ?> bytes
+                                                                    </span>
+                                                                <?php endif; ?>
                                                             </div>
                                                         </div>
                                                         <div class="send-actions">
-                                                            <button class="btn btn-sm btn-secondary" onclick="copyAccessLink('<?php echo $send['access_link']; ?>')">
+                                                            <button class="btn btn-sm btn-secondary" onclick="copyAccessLink('<?php echo $send['access_token']; ?>')">
                                                                 <i class="fas fa-copy"></i> Copy Link
                                                             </button>
                                                             <form method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this send?')">
@@ -4498,14 +5410,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             sidebar.classList.toggle('collapsed');
             mainContent.classList.toggle('expanded');
-        }
-        function copyToClipboard(text) {
-            if (text) {
-                navigator.clipboard.writeText(text).then(() => {
+        }        function copyToClipboard(textOrElementId) {
+            let textToCopy = textOrElementId;
+            
+            // If it looks like an element ID, try to get the element's value
+            if (typeof textOrElementId === 'string' && !textOrElementId.includes(' ') && !textOrElementId.includes('://')) {
+                const element = document.getElementById(textOrElementId);
+                if (element) {
+                    textToCopy = element.value || element.textContent || element.innerText;
+                }
+            }
+            
+            if (textToCopy) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
                     showNotification('Copied to clipboard!', 'success');
                 });
             }
-        }        function showNotification(message, type = 'info') {
+        }function showNotification(message, type = 'info') {
             const notification = document.createElement('div');
             const isLongMessage = message.length > 50;
             
@@ -5105,12 +6026,12 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 event.target.style.display = 'none';
             }
         }        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize generator if on generator page
+        document.addEventListener('DOMContentLoaded', function() {            // Initialize generator if on generator page
             if (window.location.search.includes('section=generator')) {
                 // Set up slider synchronization
                 const slider = document.getElementById('passwordLengthSlider');
                 const lengthInput = document.getElementById('passwordLength');
+                const customCheckbox = document.getElementById('useCustomLength');
                 
                 if (slider) {
                     slider.addEventListener('input', updateLengthDisplay);
@@ -5118,8 +6039,19 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 }
                 
                 if (lengthInput) {
-                    lengthInput.addEventListener('input', syncSlider);
-                    lengthInput.addEventListener('change', autoGenerate);
+                    lengthInput.addEventListener('input', () => {
+                        if (customCheckbox && customCheckbox.checked) {
+                            syncCustomLength();
+                            autoGenerate();
+                        } else {
+                            syncSlider();
+                            autoGenerate();
+                        }
+                    });
+                }
+                
+                if (customCheckbox) {
+                    customCheckbox.addEventListener('change', toggleCustomLength);
                 }
                 
                 // Initialize length display
@@ -5128,20 +6060,57 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 // Generate initial value
                 setTimeout(regenerateValue, 100);
                 
-                console.log('Generator initialized');
-            }
-            
-            // Initialize send section
+                console.log('Generator initialized with custom length support');
+            }            // Initialize send section
             if (window.location.search.includes('section=send')) {
                 initializeSendSection();
-            }
-            
-            // Initialize message counter
-            const messageTextarea = document.getElementById('message');
-            if (messageTextarea) {
-                messageTextarea.addEventListener('input', updateMessageCounter);
-                updateMessageCounter();
-            }
+                initializeDragAndDrop();
+                
+                // Initialize credential delivery form
+                const credentialMessageTextarea = document.getElementById('credential_message');
+                if (credentialMessageTextarea) {
+                    credentialMessageTextarea.addEventListener('input', updateCredentialMessageCounter);
+                    updateCredentialMessageCounter();
+                }
+                
+                // Initialize emergency contact form
+                const emergencyInstructionsTextarea = document.getElementById('emergency_instructions');
+                if (emergencyInstructionsTextarea) {
+                    emergencyInstructionsTextarea.addEventListener('input', updateEmergencyInstructionsCounter);
+                    updateEmergencyInstructionsCounter();
+                }
+                  // Initialize password requirement toggle for credential delivery
+                const requirePasswordCheckbox = document.getElementById('require_password_credential');
+                if (requirePasswordCheckbox) {
+                    requirePasswordCheckbox.addEventListener('change', function() {
+                        const passwordSection = document.getElementById('credential_password_section');
+                        if (passwordSection) {
+                            passwordSection.style.display = this.checked ? 'block' : 'none';
+                        }
+                    });
+                }
+                
+                // Initialize password requirement toggle for emergency contact
+                const requireEmergencyPasswordCheckbox = document.getElementById('require_emergency_password');
+                if (requireEmergencyPasswordCheckbox) {
+                    requireEmergencyPasswordCheckbox.addEventListener('change', function() {
+                        const passwordSection = document.getElementById('emergency_password_section');
+                        if (passwordSection) {
+                            passwordSection.style.display = this.checked ? 'block' : 'none';
+                        }
+                    });
+                }
+                
+                // Initialize trigger type toggle for emergency contact
+                const triggerRadios = document.querySelectorAll('input[name="trigger_type"]');
+                triggerRadios.forEach(radio => {
+                    radio.addEventListener('change', function() {
+                        const inactivitySettings = document.getElementById('inactivity_settings');
+                        if (inactivitySettings) {
+                            inactivitySettings.style.display = this.value === 'inactivity' ? 'block' : 'none';
+                        }
+                    });
+                });            }
             
             // Initialize text counter for secure send
             const sendTextarea = document.getElementById('send_text');
@@ -5179,8 +6148,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             // Generate new value
             regenerateValue();
-        }
-          function regenerateValue() {
+        }        function regenerateValue() {
             const generatedValue = document.getElementById('generatedValue');
             const regenerateBtn = document.getElementById('regenerateBtn');
             
@@ -5216,8 +6184,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                     hidePasswordStrength();
                 }
                 
-                // Add to history
-                addToHistory(value, currentGeneratorTab);
+                // Note: History is only saved when user clicks "Save to History" button
                 
             } catch (error) {
                 console.error('Error generating value:', error);
@@ -5325,9 +6292,24 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             return { percentage, label, class: cssClass };
         }
-        
-        function generatePasswordValue() {
-            const length = parseInt(document.getElementById('passwordLength').value);
+          function generatePasswordValue() {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const lengthInput = document.getElementById('passwordLength');
+            const slider = document.getElementById('passwordLengthSlider');
+            
+            let length;
+            if (customCheckbox && customCheckbox.checked && lengthInput) {
+                length = Math.max(5, parseInt(lengthInput.value) || 14);
+            } else {
+                length = parseInt(slider ? slider.value : 14);
+            }
+            
+            // Safety check for very large lengths
+            if (length > 10000) {
+                showNotification('Password length limited to 10,000 characters for performance reasons', 'warning');
+                length = 10000;
+            }
+            
             const includeUppercase = document.getElementById('includeUppercase').checked;
             const includeLowercase = document.getElementById('includeLowercase').checked;
             const includeNumbers = document.getElementById('includeNumbers').checked;
@@ -5335,6 +6317,12 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             const minNumbers = parseInt(document.getElementById('minNumbers').value);
             const minSymbols = parseInt(document.getElementById('minSymbols').value);
             const avoidAmbiguous = document.getElementById('avoidAmbiguous').checked;
+            
+            // Validate that at least one character type is selected
+            if (!includeUppercase && !includeLowercase && !includeNumbers && !includeSymbols) {
+                showNotification('Please select at least one character type', 'error');
+                return 'Error: No character types selected';
+            }
             
             // Character sets
             let uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -5354,13 +6342,13 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             // Ensure minimum requirements
             if (includeNumbers && minNumbers > 0) {
-                for (let i = 0; i < minNumbers; i++) {
+                for (let i = 0; i < Math.min(minNumbers, length); i++) {
                     password += numbers.charAt(Math.floor(Math.random() * numbers.length));
                 }
             }
             
             if (includeSymbols && minSymbols > 0) {
-                for (let i = 0; i < minSymbols; i++) {
+                for (let i = 0; i < Math.min(minSymbols, length); i++) {
                     password += symbols.charAt(Math.floor(Math.random() * symbols.length));
                 }
             }
@@ -5376,8 +6364,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 password += charset.charAt(Math.floor(Math.random() * charset.length));
             }
             
-            // Shuffle password
-            return password.split('').sort(() => Math.random() - 0.5).join('');
+            // Shuffle password using Fisher-Yates algorithm for better randomization
+            const passwordArray = password.split('');
+            for (let i = passwordArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
+            }
+            
+            return passwordArray.join('');
         }
         
         function generatePassphraseValue() {
@@ -5503,25 +6497,64 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             clearTimeout(window.autoGenerateTimeout);
             window.autoGenerateTimeout = setTimeout(regenerateValue, 150);
         }
-        
-        function updateLengthDisplay() {
+          function updateLengthDisplay() {
             const slider = document.getElementById('passwordLengthSlider');
             const display = document.getElementById('lengthValue');
             const input = document.getElementById('passwordLength');
+            const customCheckbox = document.getElementById('useCustomLength');
             
             if (slider && display) {
-                display.textContent = slider.value;
-                if (input) input.value = slider.value;
+                let length = slider.value;
+                if (customCheckbox && customCheckbox.checked && input) {
+                    length = input.value || 14;
+                }
+                display.textContent = length;
+                if (input && !customCheckbox.checked) {
+                    input.value = length;
+                }
             }
         }
         
         function syncSlider() {
             const slider = document.getElementById('passwordLengthSlider');
             const input = document.getElementById('passwordLength');
+            const customCheckbox = document.getElementById('useCustomLength');
             
-            if (slider && input) {
-                slider.value = input.value;
+            if (slider && input && !customCheckbox.checked) {
+                slider.value = Math.min(256, Math.max(5, input.value || 14));
                 updateLengthDisplay();
+            }
+        }
+        
+        function syncCustomLength() {
+            const input = document.getElementById('passwordLength');
+            const display = document.getElementById('lengthValue');
+            
+            if (input && display) {
+                const length = Math.max(5, input.value || 14);
+                input.value = length;
+                display.textContent = length;
+            }
+        }
+        
+        function toggleCustomLength() {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const input = document.getElementById('passwordLength');
+            const slider = document.getElementById('passwordLengthSlider');
+            
+            if (customCheckbox && input && slider) {
+                const isCustom = customCheckbox.checked;
+                
+                input.style.display = isCustom ? 'block' : 'none';
+                slider.disabled = isCustom;
+                slider.style.opacity = isCustom ? '0.5' : '1';
+                
+                if (isCustom) {
+                    input.focus();
+                }
+                
+                updateLengthDisplay();
+                autoGenerate();
             }
         }
         
@@ -5539,12 +6572,20 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 toggleIcon.classList.toggle('fa-chevron-up', isHidden);
             }
         }
-        
-        function applyPreset(type) {
+          function applyPreset(type) {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const lengthInput = document.getElementById('passwordLength');
+            
+            // Disable custom length for presets
+            if (customCheckbox) {
+                customCheckbox.checked = false;
+                toggleCustomLength();
+            }
+            
             if (type === 'simple') {
                 // Simple & Secure preset
                 document.getElementById('passwordLengthSlider').value = 12;
-                document.getElementById('passwordLength').value = 12;
+                if (lengthInput) lengthInput.value = 12;
                 document.getElementById('includeUppercase').checked = true;
                 document.getElementById('includeLowercase').checked = true;
                 document.getElementById('includeNumbers').checked = true;
@@ -5553,11 +6594,11 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.getElementById('minSymbols').value = 0;
                 document.getElementById('avoidAmbiguous').checked = true;
                 
-                showNotification('Applied Simple & Secure preset', 'info');
+                showNotification('Applied Simple & Secure preset (12 characters)', 'info');
             } else if (type === 'complex') {
                 // Maximum Security preset
                 document.getElementById('passwordLengthSlider').value = 20;
-                document.getElementById('passwordLength').value = 20;
+                if (lengthInput) lengthInput.value = 20;
                 document.getElementById('includeUppercase').checked = true;
                 document.getElementById('includeLowercase').checked = true;
                 document.getElementById('includeNumbers').checked = true;
@@ -5566,20 +6607,25 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.getElementById('minSymbols').value = 3;
                 document.getElementById('avoidAmbiguous').checked = false;
                 
-                showNotification('Applied Maximum Security preset', 'info');
+                showNotification('Applied Maximum Security preset (20 characters)', 'info');
             }
             
             updateLengthDisplay();
             autoGenerate();
-        }
-          function toggleHistory() {
+        }function toggleHistory() {
             const historyContent = document.getElementById('historyContent');
             const historyToggle = document.querySelector('.history-toggle');
+            const clearBtn = document.getElementById('clearHistoryBtn');
             
             if (historyContent && historyToggle) {
                 const isHidden = historyContent.style.display === 'none';
                 historyContent.style.display = isHidden ? 'block' : 'none';
                 historyToggle.classList.toggle('expanded', isHidden);
+                
+                // Show/hide clear button
+                if (clearBtn) {
+                    clearBtn.style.display = isHidden ? 'inline-block' : 'none';
+                }
                 
                 // Update history display when showing
                 if (isHidden) {
@@ -5647,9 +6693,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             }).catch(() => {
                 showNotification('Failed to copy from history', 'error');
             });
-        }
-        
-        function addToHistory() {
+        }        function addToHistory() {
             const generatedValue = document.getElementById('generatedValue');
             const saveBtn = document.getElementById('saveBtn');
             const value = generatedValue.textContent;
@@ -5659,14 +6703,30 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 return;
             }
             
+            // Check if this value is already in history to avoid duplicates
+            const history = loadGeneratorHistory();
+            const isDuplicate = history.some(entry => entry.value === value);
+            
+            if (isDuplicate) {
+                showNotification('This value is already saved in history!', 'info');
+                return;
+            }
+            
             // Visual feedback
             if (saveBtn) {
                 saveBtn.classList.add('clicked');
                 saveBtn.innerHTML = '<i class="fas fa-check"></i>';
             }
             
-            // For now, just add to history (could be enhanced to save to vault)
-            showNotification('Added to generator history!', 'success');
+            // Save to history
+            saveToGeneratorHistory(value, currentGeneratorTab);
+            showNotification('Saved to generator history!', 'success');
+            
+            // Update history display if visible
+            const historyContent = document.getElementById('historyContent');
+            if (historyContent && historyContent.style.display !== 'none') {
+                updateHistoryDisplay();
+            }
             
             // Reset button
             setTimeout(() => {
@@ -5676,8 +6736,102 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 }
             }, 1000);
         }
-
-        // Send Section Functions
+        
+        function saveToGeneratorHistory(value, type) {
+            try {
+                let history = JSON.parse(localStorage.getItem('generatorHistory') || '[]');
+                
+                // Create history entry
+                const entry = {
+                    id: Date.now(),
+                    value: value,
+                    type: type,
+                    timestamp: new Date().toISOString(),
+                    strength: type === 'password' ? calculatePasswordStrength(value) : null
+                };
+                
+                // Add to beginning of array
+                history.unshift(entry);
+                
+                // Keep only last 50 entries
+                history = history.slice(0, 50);
+                
+                // Save back to localStorage
+                localStorage.setItem('generatorHistory', JSON.stringify(history));
+                
+            } catch (error) {
+                console.error('Error saving to history:', error);
+            }
+        }
+        
+        function loadGeneratorHistory() {
+            try {
+                return JSON.parse(localStorage.getItem('generatorHistory') || '[]');
+            } catch (error) {
+                console.error('Error loading history:', error);
+                return [];
+            }
+        }
+        
+        function updateHistoryDisplay() {
+            const historyContent = document.getElementById('historyContent');
+            if (!historyContent) return;
+            
+            const history = loadGeneratorHistory();
+            
+            if (history.length === 0) {
+                historyContent.innerHTML = '<p class="no-history">No history available. Generate and save some values to see them here.</p>';
+                return;
+            }
+            
+            let historyHtml = '';
+            
+            history.forEach(entry => {
+                const date = new Date(entry.timestamp);
+                const timeAgo = getTimeAgo(date);
+                const strengthInfo = entry.strength ? 
+                    `<span class="history-strength ${entry.strength.class}">${entry.strength.label}</span>` : '';
+                
+                historyHtml += `
+                    <div class="history-item">
+                        <div class="history-item-header">
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span class="history-type">${entry.type}</span>
+                                ${strengthInfo}
+                            </div>
+                            <span class="history-time">${timeAgo}</span>
+                        </div>
+                        <div class="history-value" onclick="copyHistoryItem('${entry.value.replace(/'/g, '\\\'')}')" title="Click to copy">
+                            ${entry.value.length > 50 ? entry.value.substring(0, 50) + '...' : entry.value}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            historyContent.innerHTML = historyHtml;
+        }
+        
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return date.toLocaleDateString();
+        }
+        
+        function clearGeneratorHistory() {
+            if (confirm('Are you sure you want to clear all generator history?')) {
+                localStorage.removeItem('generatorHistory');
+                updateHistoryDisplay();
+                showNotification('Generator history cleared!', 'success');
+            }
+        }        // Send Section Functions
         function switchSendTab(tab) {
             // Update tab buttons
             document.querySelectorAll('.send-tab-button').forEach(btn => {
@@ -5698,55 +6852,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             typeRadios.forEach(radio => {
                 radio.addEventListener('change', toggleSendContent);
             });
-            
-            // Initialize preview updates
-            const senderNote = document.getElementById('sender_note');
-            const message = document.getElementById('message');
-            
-            if (senderNote) {
-                senderNote.addEventListener('input', updateEmailPreview);
-            }
-            if (message) {
-                message.addEventListener('input', updateEmailPreview);
-            }
         }
         
         function toggleSendContent() {
             const textContent = document.getElementById('textContent');
             const fileContent = document.getElementById('fileContent');
             const isFileType = document.getElementById('type_file').checked;
-            
-            textContent.style.display = isFileType ? 'none' : 'block';
+              textContent.style.display = isFileType ? 'none' : 'block';
             fileContent.style.display = isFileType ? 'block' : 'none';
-        }
-        
-        function updateEmailPreview() {
-            const senderNote = document.getElementById('sender_note').value;
-            const message = document.getElementById('message').value;
-            
-            const senderNotePreview = document.getElementById('senderNotePreview');
-            const messagePreview = document.getElementById('messagePreview');
-            
-            if (senderNote) {
-                senderNotePreview.innerHTML = `<strong>From:</strong> ${senderNote}`;
-                senderNotePreview.style.display = 'block';
-            } else {
-                senderNotePreview.style.display = 'none';
-            }
-            
-            if (message) {
-                messagePreview.innerHTML = message.replace(/\n/g, '<br>');
-            } else {
-                messagePreview.innerHTML = '<em>Your message will appear here as you type...</em>';
-            }
-        }
-        
-        function updateMessageCounter() {
-            const message = document.getElementById('message').value;
-            const counter = document.getElementById('messageCounter');
-            if (counter) {
-                counter.textContent = message.length;
-            }
         }
         
         function updateTextCounter() {
@@ -5754,17 +6867,206 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             const counter = document.getElementById('textCounter');
             if (counter) {
                 counter.textContent = text.length;
+            }        }
+        
+        function toggleExpiryType() {
+            const expiryType = document.getElementById('expiry_type').value;
+            const presetOptions = document.getElementById('preset_options');
+            const customOptions = document.getElementById('custom_options');
+            
+            if (expiryType === 'custom') {
+                presetOptions.style.display = 'none';
+                customOptions.style.display = 'block';
+            } else {
+                presetOptions.style.display = 'block';
+                customOptions.style.display = 'none';
             }
         }
         
-        function clearEmailForm() {
-            document.getElementById('anonymousEmailForm').reset();
-            updateEmailPreview();
-            updateMessageCounter();
-        }
-          function clearSecureForm() {
+        function clearSecureForm() {
             document.getElementById('secureSendForm').reset();
             updateTextCounter();
+        }
+        
+        function clearCredentialForm() {
+            document.getElementById('credentialDeliveryForm').reset();
+            updateCredentialMessageCounter();
+            
+            // Hide password section if visible
+            const passwordSection = document.getElementById('credential_password_section');
+            if (passwordSection) {
+                passwordSection.style.display = 'none';
+            }
+        }
+        
+        function clearEmergencyForm() {
+            document.getElementById('emergencyContactForm').reset();
+            updateEmergencyInstructionsCounter();
+            
+            // Show inactivity settings by default
+            const inactivitySettings = document.getElementById('inactivity_settings');
+            if (inactivitySettings) {
+                inactivitySettings.style.display = 'block';
+            }
+        }
+        
+        function updateCredentialMessageCounter() {
+            const textarea = document.getElementById('credential_message');
+            const counter = document.getElementById('credentialMessageCounter');
+            if (textarea && counter) {
+                counter.textContent = textarea.value.length;
+            }
+        }
+          function updateEmergencyInstructionsCounter() {
+            const textarea = document.getElementById('emergency_instructions');
+            const counter = document.getElementById('emergencyInstructionsCounter');
+            if (textarea && counter) {
+                counter.textContent = textarea.value.length;
+            }
+        }
+        
+        // Enhanced file handling functions
+        function handleFileSelection(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            // Validate file size (25MB limit)
+            const maxSize = 25 * 1024 * 1024; // 25MB in bytes
+            if (file.size > maxSize) {
+                showNotification('File size exceeds 25MB limit. Please choose a smaller file.', 'error');
+                input.value = '';
+                return;
+            }
+            
+            // Show file preview
+            showFilePreview(file);
+            
+            // Hide upload area
+            const uploadArea = document.querySelector('.file-upload-area');
+            if (uploadArea) {
+                uploadArea.style.display = 'none';
+            }
+        }
+        
+        function showFilePreview(file) {
+            const preview = document.getElementById('file-preview');
+            const fileName = preview.querySelector('.file-name');
+            const fileSize = preview.querySelector('.file-size');
+            const fileType = preview.querySelector('.file-type');
+            const fileIcon = preview.querySelector('.file-icon i');
+            const imagePreview = document.getElementById('image-preview');
+            const previewImage = document.getElementById('preview-image');
+            
+            if (!preview) return;
+            
+            // Update file info
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileType.textContent = file.type || 'Unknown';
+            
+            // Update icon based on file type
+            if (file.type.startsWith('image/')) {
+                fileIcon.className = 'fas fa-image';
+                fileIcon.style.color = '#10b981';
+                
+                // Show image preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImage.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.includes('pdf')) {
+                fileIcon.className = 'fas fa-file-pdf';
+                fileIcon.style.color = '#ef4444';
+                imagePreview.style.display = 'none';
+            } else if (file.type.includes('zip') || file.type.includes('rar')) {
+                fileIcon.className = 'fas fa-file-archive';
+                fileIcon.style.color = '#f59e0b';
+                imagePreview.style.display = 'none';
+            } else if (file.type.includes('text')) {
+                fileIcon.className = 'fas fa-file-alt';
+                fileIcon.style.color = '#6366f1';
+                imagePreview.style.display = 'none';
+            } else {
+                fileIcon.className = 'fas fa-file';
+                fileIcon.style.color = '#6b7280';
+                imagePreview.style.display = 'none';
+            }
+            
+            // Show preview
+            preview.style.display = 'block';
+        }
+        
+        function removeFile() {
+            const fileInput = document.getElementById('send_file');
+            const preview = document.getElementById('file-preview');
+            const uploadArea = document.querySelector('.file-upload-area');
+            const imagePreview = document.getElementById('image-preview');
+            
+            // Reset file input
+            if (fileInput) fileInput.value = '';
+            
+            // Hide preview
+            if (preview) preview.style.display = 'none';
+            
+            // Show upload area
+            if (uploadArea) uploadArea.style.display = 'block';
+            
+            // Hide image preview
+            if (imagePreview) imagePreview.style.display = 'none';
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Drag and drop functionality
+        function initializeDragAndDrop() {
+            const uploadArea = document.querySelector('.file-upload-area');
+            if (!uploadArea) return;
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            uploadArea.addEventListener('drop', handleDrop, false);
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function highlight() {
+                uploadArea.classList.add('dragover');
+            }
+            
+            function unhighlight() {
+                uploadArea.classList.remove('dragover');
+            }
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                const fileInput = document.getElementById('send_file');
+                
+                if (files.length > 0 && fileInput) {
+                    fileInput.files = files;
+                    handleFileSelection(fileInput);
+                }
+            }
         }
         
         // Send Management Functions

@@ -1,5 +1,7 @@
 <?php
-// File download handler for Send feature
+/**
+ * Image viewer for BLOB-stored images in sends
+ */
 session_start();
 
 require_once 'classes/Database.php';
@@ -14,7 +16,7 @@ $isPreAuthenticated = isset($_SESSION[$sessionKey]) && $_SESSION[$sessionKey] ==
 
 if (empty($accessLink)) {
     http_response_code(404);
-    die('Invalid download link');
+    die('Invalid access link');
 }
 
 try {
@@ -29,7 +31,7 @@ try {
     }
       // Check if password is required and user is not pre-authenticated
     if ($tempSend['password_hash'] && empty($password) && !$isPreAuthenticated) {
-        showPasswordForm($accessLink, 'Password required for this download');
+        showPasswordForm($accessLink, 'Password required to view this image');
         exit;
     }
       // Access the send
@@ -39,6 +41,11 @@ try {
     } else {
         // Normal access (will increment view count)
         $result = $sendManager->accessSend($accessLink, $password);
+        
+        // Set session flag for seamless download after viewing
+        if ($result['success']) {
+            $_SESSION[$sessionKey] = true;
+        }
     }
     
     if (!$result['success']) {
@@ -50,58 +57,37 @@ try {
             die($result['message']);
         }
     }
-      $send = $result['send'];
-    
-    if ($send['type'] !== 'file') {
+
+    $send = $result['send'];
+      if ($send['type'] !== 'file' || $send['storage_type'] !== 'blob') {
         http_response_code(400);
-        die('This send is not a file');
+        die('This send is not a viewable image');
     }
     
-    // Check if this is a BLOB-stored image
-    if ($send['storage_type'] === 'blob') {
-        http_response_code(400);
-        die('This file is an image. Please view it directly in the browser.');
-    }
+    // Get image data from database
+    $db = new Database();
+    $sql = "SELECT file_data, mime_type, file_name FROM sends WHERE access_token = :token";
+    $imageData = $db->fetchOne($sql, ['token' => $accessLink]);
     
-    $filePath = $send['file_path'];
-    
-    if (!file_exists($filePath)) {
+    if (!$imageData || !$imageData['file_data']) {
         http_response_code(404);
-        die('File not found on server: ' . $filePath);
+        die('Image data not found');
     }
     
-    // Get file info - original filename is stored in file_name, not content
-    $fileName = $send['file_name'] ?: 'download'; // Use file_name field
-    $fileSize = filesize($filePath);
-    $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
-    
-    // Clean filename for download
-    $cleanFileName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileName);
-    
-    // Set headers for download
-    header('Content-Type: ' . $mimeType);
-    header('Content-Disposition: attachment; filename="' . $cleanFileName . '"');
-    header('Content-Length: ' . $fileSize);
+    // Set appropriate headers for image display
+    header('Content-Type: ' . $imageData['mime_type']);
+    header('Content-Length: ' . strlen($imageData['file_data']));
     header('Cache-Control: no-cache, must-revalidate');
     header('Pragma: no-cache');
     header('Expires: 0');
-      // Clear any output buffers
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
     
-    // Clean up session flag after successful download
-    if (isset($_SESSION[$sessionKey])) {
-        unset($_SESSION[$sessionKey]);
-    }
-    
-    // Output file
-    readfile($filePath);
+    // Output the image data
+    echo $imageData['file_data'];
     exit;
     
 } catch (Exception $e) {
     http_response_code(500);
-    die('Download failed: ' . $e->getMessage());
+    die('Failed to load image: ' . $e->getMessage());
 }
 
 function showPasswordForm($accessLink, $error) {
@@ -186,7 +172,7 @@ function showPasswordForm($accessLink, $error) {
     <body>
         <div class="password-container">
             <h2>🔐 Password Required</h2>
-            <p>This download is password protected. Please enter the password to access the file.</p>
+            <p>This image is password protected. Please enter the password to view it.</p>
             
             <?php if ($error): ?>
                 <div class="error"><?= htmlspecialchars($error) ?></div>
@@ -197,7 +183,7 @@ function showPasswordForm($accessLink, $error) {
                     <label for="password">Password:</label>
                     <input type="password" id="password" name="password" required autofocus>
                 </div>
-                <button type="submit" class="btn">Access Download</button>
+                <button type="submit" class="btn">View Image</button>
             </form>
         </div>
     </body>
