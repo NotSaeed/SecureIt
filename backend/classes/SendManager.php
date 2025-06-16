@@ -178,9 +178,8 @@ class SendManager {
             }
               // Increment view count
             $sql = "UPDATE sends SET view_count = view_count + 1, last_accessed = NOW() WHERE id = :id";
-            $this->db->query($sql, ['id' => $send['id']]);
-              // Decrypt content if text, credential, or emergency
-            if ($send['type'] === 'text' || $send['type'] === 'credential' || $send['type'] === 'emergency') {
+            $this->db->query($sql, ['id' => $send['id']]);              // Decrypt content if text or credential
+            if ($send['type'] === 'text' || $send['type'] === 'credential') {
                 $send['content'] = $this->encryptionHelper->decrypt($send['content']);
             }
             
@@ -436,111 +435,5 @@ class SendManager {
             error_log("SendManager::createCredentialDelivery - " . $e->getMessage());
             throw $e;
         }
-    }
-    
-    /**
-     * Create an emergency contact delivery for digital legacy access
-     */
-    public function createEmergencyContact($userId, $contactName, $contactEmail, $vaultItemIds, $options = []) {
-        try {
-            // Generate unique access token
-            $accessToken = $this->generateAccessToken();
-            
-            // Set expiration (emergency contacts have longer expiration)
-            $expiryDays = $options['expiry_days'] ?? 365; // Default 1 year
-            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryDays} days"));
-            
-            // Get selected vault items
-            $vault = new Vault();
-            $selectedItems = [];
-              foreach ($vaultItemIds as $itemId) {
-                $vaultItem = $vault->getItem($itemId, $userId);
-                if ($vaultItem) {
-                    $selectedItems[] = [
-                        'id' => $vaultItem['id'],
-                        'item_name' => $vaultItem['item_name'],
-                        'item_type' => $vaultItem['item_type'],
-                        'data' => $vaultItem['encrypted_data'], // Use encrypted_data field
-                        'website_url' => $vaultItem['website_url'] ?? null
-                    ];
-                }
-            }
-            
-            if (empty($selectedItems)) {
-                throw new Exception('No valid vault items found for emergency access');
-            }
-            
-            // Prepare emergency content
-            $emergencyContent = json_encode([
-                'contact_name' => $contactName,
-                'contact_email' => $contactEmail,
-                'relationship' => $options['relationship'] ?? 'Emergency Contact',
-                'instructions' => $options['instructions'] ?? '',
-                'trigger_type' => $options['trigger_type'] ?? 'manual',
-                'inactivity_days' => $options['inactivity_days'] ?? 30,
-                'vault_items' => $selectedItems,
-                'created_date' => date('Y-m-d H:i:s')
-            ]);
-              // Prepare data for database
-            $sendData = [
-                'user_id' => $userId,
-                'type' => 'emergency',
-                'name' => 'Emergency Access for ' . $contactName,
-                'access_token' => $accessToken,
-                'expires_at' => $expirationDate,
-                'max_views' => $options['max_views'] ?? null,
-                'password_hash' => null,
-                'metadata' => json_encode([
-                    'contact_name' => $contactName,
-                    'contact_email' => $contactEmail,
-                    'relationship' => $options['relationship'] ?? 'Emergency Contact',
-                    'vault_item_count' => count($selectedItems)
-                ])
-            ];
-            
-            // Hash password if provided
-            if (!empty($options['access_password'])) {
-                $sendData['password_hash'] = password_hash($options['access_password'], PASSWORD_DEFAULT);
-            }            // Encrypt the emergency content
-            $encryptedContent = $this->encryptionHelper->encrypt($emergencyContent);
-            $sendData['content'] = $encryptedContent;
-            
-            // Insert into database
-            $sql = "INSERT INTO sends (user_id, type, name, access_token, expires_at, max_views, password_hash, metadata, content, view_count) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
-            
-            $this->db->query($sql, [
-                $sendData['user_id'],
-                $sendData['type'],
-                $sendData['name'],
-                $sendData['access_token'],
-                $sendData['expires_at'],
-                $sendData['max_views'],
-                $sendData['password_hash'],
-                
-                $sendData['metadata'],
-                $sendData['content']
-            ]);
-            
-            $sendId = $this->db->lastInsertId();
-            
-            if (!$sendId) {
-                throw new Exception('Failed to create emergency contact');
-            }
-            
-            return [
-                'id' => $sendId,
-                'access_link' => $accessToken,
-                'expires_at' => $expirationDate,
-                'contact_name' => $contactName,
-                'contact_email' => $contactEmail,
-                'vault_items_count' => count($selectedItems)
-            ];
-            
-        } catch (Exception $e) {
-            error_log("SendManager::createEmergencyContact - " . $e->getMessage());
-            throw $e;
-        }
-    }
-}
+    }}
 ?>

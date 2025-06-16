@@ -16,21 +16,15 @@ if (isset($_SESSION['message'])) {
     if ($_SESSION['message_type'] === 'success') {
         $success = $_SESSION['message'];
     } else {
-        $error = $_SESSION['message'];
-    }
+        $error = $_SESSION['message'];    }
     unset($_SESSION['message'], $_SESSION['message_type']);
 }
 
 // Handle special success messages for sends
 $sendSuccessLink = '';
-$emergencySuccessData = null;
 if (isset($_SESSION['send_success_link'])) {
     $sendSuccessLink = $_SESSION['send_success_link'];
     unset($_SESSION['send_success_link']);
-}
-if (isset($_SESSION['emergency_success_data'])) {
-    $emergencySuccessData = $_SESSION['emergency_success_data'];
-    unset($_SESSION['emergency_success_data']);
 }
 
 // Handle form submissions
@@ -276,69 +270,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
                     exit();
                 } catch (Exception $e) {
-                    $_SESSION['message'] = 'Failed to delete send: ' . $e->getMessage();
-                    $_SESSION['message_type'] = 'error';
-                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
-                    exit();
+                    $_SESSION['message'] = 'Failed to delete send: ' . $e->getMessage();                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');                    exit();
                 }
             }
             break;
-              case 'create_emergency_contact':
-            if ($isLoggedIn) {
-                try {
-                    $sendManager = new SendManager();
-                    
-                    // Validate required fields
-                    if (empty($_POST['contact_name'])) {
-                        throw new Exception('Contact name is required');
-                    }
-                    if (empty($_POST['contact_email'])) {
-                        throw new Exception('Contact email is required');
-                    }
-                    if (!filter_var($_POST['contact_email'], FILTER_VALIDATE_EMAIL)) {
-                        throw new Exception('Please enter a valid email address');
-                    }
-                    if (empty($_POST['relationship'])) {
-                        throw new Exception('Please select a relationship');
-                    }
-                    if (empty($_POST['emergency_items']) || !is_array($_POST['emergency_items'])) {
-                        throw new Exception('Please select at least one vault item for emergency access');
-                    }
-                    if (empty($_POST['emergency_instructions'])) {
-                        throw new Exception('Emergency instructions are required');
-                    }
-                    
-                    // Build options array
-                    $options = [
-                        'relationship' => $_POST['relationship'],
-                        'instructions' => trim($_POST['emergency_instructions']),
-                        'trigger_type' => $_POST['trigger_type'] ?? 'manual',
-                        'inactivity_days' => (int)($_POST['inactivity_days'] ?? 30),
-                        'access_password' => !empty($_POST['emergency_access_password']) ? $_POST['emergency_access_password'] : null,
-                        'expiry_days' => 365 // Emergency contacts last 1 year
-                    ];
-                    
-                    $result = $sendManager->createEmergencyContact(
-                        $_SESSION['user_id'],
-                        $_POST['contact_name'],
-                        $_POST['contact_email'],
-                        $_POST['emergency_items'],
-                        $options
-                    );
-                    
-                    $_SESSION['emergency_success_data'] = $result;
-                    $_SESSION['message'] = "Emergency contact created successfully!";
-                    $_SESSION['message_type'] = 'success';
-                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&emergency_success=1');
-                    exit();
-                    
-                } catch (Exception $e) {
-                    $_SESSION['message'] = 'Failed to setup emergency contact: ' . $e->getMessage();
-                    $_SESSION['message_type'] = 'error';
-                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
-                    exit();                }
-            }
-            break;        case 'create_credential_delivery':
+            
+        case 'create_credential_delivery':
             if ($isLoggedIn) {
                 try {
                     $sendManager = new SendManager();
@@ -3677,28 +3615,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     </div>
                                 </div>
                             <?php endif; ?>
-                            
-                            <?php if ($emergencySuccessData): ?>
-                                <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
-                                    <strong>Emergency contact setup complete!</strong><br>
-                                    <div style="margin-top: 8px;">
-                                        <strong>Contact:</strong> <?= htmlspecialchars($emergencySuccessData['contact_name']) ?> (<?= htmlspecialchars($emergencySuccessData['contact_email']) ?>)<br>
-                                        <strong>Access to:</strong> <?= $emergencySuccessData['vault_items_count'] ?> vault items<br>
-                                        <strong>Valid until:</strong> <?= date('M j, Y', strtotime($emergencySuccessData['expires_at'])) ?>
-                                    </div>
-                                    <div style="display: flex; align-items: center; margin-top: 8px;">
-                                        <input type="text" 
-                                               value="http://localhost/SecureIt/backend/access_send.php?link=<?= htmlspecialchars($emergencySuccessData['access_link']) ?>" 
-                                               readonly 
-                                               id="emergencyLink"
-                                               style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: monospace; font-size: 12px;">
-                                        <button onclick="copyToClipboard('emergencyLink')" 
-                                                style="margin-left: 10px; padding: 8px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                            <i class="fas fa-copy"></i> Copy
-                                        </button>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
+  
                         </div>
                     <?php endif; ?>                    <?php if ($currentSection === 'dashboard'): ?>
                         <!-- Dashboard Content -->
@@ -4195,16 +4112,12 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
 
                     <?php elseif ($currentSection === 'send'): ?>
                         <!-- Send Section -->
-                        <div class="send-container">                            <!-- Send Tabs -->
-                            <div class="send-tabs">
+                        <div class="send-container">                            <!-- Send Tabs -->                            <div class="send-tabs">
                                 <button class="send-tab-button active" data-tab="secure" onclick="switchSendTab('secure')">
                                     <i class="fas fa-shield-check"></i> Secure Send
                                 </button>
                                 <button class="send-tab-button" data-tab="credential" onclick="switchSendTab('credential')">
                                     <i class="fas fa-clipboard-list"></i> Credential Delivery
-                                </button>
-                                <button class="send-tab-button" data-tab="emergency" onclick="switchSendTab('emergency')">
-                                    <i class="fas fa-phone-alt"></i> Emergency Contact
                                 </button>
                                 <button class="send-tab-button" data-tab="manage" onclick="switchSendTab('manage')">
                                     <i class="fas fa-tasks"></i> Manage Sends
@@ -4543,213 +4456,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </form>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Emergency Contact Delivery Tab -->
-                            <div id="emergencyTab" class="send-tab-content">
-                                <div class="card enhanced-card">
-                                    <div class="card-header gradient-header">
-                                        <h2 class="card-title">
-                                            <i class="fas fa-phone-alt"></i> Emergency Contact Delivery
-                                        </h2>
-                                        <p class="card-description">Protect your digital legacy by allowing trusted contacts to access selected vault items in emergencies or after periods of inactivity.</p>
-                                        <div class="feature-badges">
-                                            <span class="badge badge-success"><i class="fas fa-heart"></i> Digital Legacy</span>
-                                            <span class="badge badge-info"><i class="fas fa-user-shield"></i> Trusted Contacts</span>
-                                            <span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> Emergency Only</span>
-                                        </div>
-                                    </div>
-                                    <div class="card-body">
-                                        <form method="POST" id="emergencyContactForm" class="enhanced-form">
-                                            <input type="hidden" name="action" value="create_emergency_contact">
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-user-friends"></i> Emergency Contact</h4>
-                                                <div class="form-group">
-                                                    <label for="emergency_contact_name" class="enhanced-label">
-                                                        <i class="fas fa-user"></i> Contact Name
-                                                    </label>
-                                                    <input type="text" id="emergency_contact_name" name="contact_name" class="enhanced-input" 
-                                                           placeholder="Enter trusted contact's name" required>
-                                                    <small class="form-help">Full name of your trusted emergency contact</small>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="emergency_contact_email" class="enhanced-label">
-                                                        <i class="fas fa-envelope"></i> Contact Email
-                                                    </label>
-                                                    <input type="email" id="emergency_contact_email" name="contact_email" class="enhanced-input" 
-                                                           placeholder="Enter contact's email address" required>
-                                                    <small class="form-help">Email address where emergency access will be sent</small>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="emergency_relationship" class="enhanced-label">
-                                                        <i class="fas fa-heart"></i> Relationship
-                                                    </label>
-                                                    <select id="emergency_relationship" name="relationship" class="enhanced-input" required>
-                                                        <option value="">Select relationship...</option>
-                                                        <option value="spouse">Spouse</option>
-                                                        <option value="partner">Partner</option>
-                                                        <option value="parent">Parent</option>
-                                                        <option value="child">Child</option>
-                                                        <option value="sibling">Sibling</option>
-                                                        <option value="friend">Trusted Friend</option>
-                                                        <option value="lawyer">Lawyer</option>
-                                                        <option value="executor">Executor</option>
-                                                        <option value="other">Other</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Items</h4>
-                                                <div class="form-group">
-                                                    <label class="enhanced-label">
-                                                        <i class="fas fa-list-check"></i> Items to Include in Emergency Access
-                                                    </label>
-                                                    <div class="vault-items-selection">
-                                                        <?php if ($isLoggedIn): ?>
-                                                            <?php
-                                                            try {
-                                                                $vault = new Vault();
-                                                                $allItems = $vault->getUserItems($_SESSION['user_id']);
-                                                                if (empty($allItems)):
-                                                            ?>
-                                                                <p class="no-items">No vault items found. Add some items to your vault first.</p>
-                                                            <?php else: ?>
-                                                                <?php foreach ($allItems as $item): ?>
-                                                                    <label class="vault-item-checkbox">
-                                                                        <input type="checkbox" name="emergency_items[]" value="<?= $item['id'] ?>" class="enhanced-checkbox">
-                                                                        <div class="vault-item-info">
-                                                                            <div class="vault-item-icon">
-                                                                                <?php
-                                                                                switch ($item['item_type']) {
-                                                                                    case 'login': echo '<i class="fas fa-sign-in-alt"></i>'; break;
-                                                                                    case 'card': echo '<i class="fas fa-credit-card"></i>'; break;
-                                                                                    case 'identity': echo '<i class="fas fa-id-card"></i>'; break;
-                                                                                    case 'note': echo '<i class="fas fa-sticky-note"></i>'; break;
-                                                                                    default: echo '<i class="fas fa-key"></i>';
-                                                                                }
-                                                                                ?>
-                                                                            </div>
-                                                                            <div class="vault-item-details">
-                                                                                <span class="item-name"><?= htmlspecialchars($item['item_name']) ?></span>
-                                                                                <span class="item-type"><?= ucfirst($item['item_type']) ?></span>
-                                                                                <?php if ($item['website_url']): ?>
-                                                                                    <span class="item-url"><?= htmlspecialchars($item['website_url']) ?></span>
-                                                                                <?php endif; ?>
-                                                                            </div>
-                                                                        </div>
-                                                                    </label>
-                                                                <?php endforeach; ?>
-                                                            <?php endif; ?>
-                                                            <?php } catch (Exception $e) { ?>
-                                                                <p class="error-message">Error loading vault items: <?= htmlspecialchars($e->getMessage()) ?></p>
-                                                            <?php } ?>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                    <small class="form-help">Select which vault items your emergency contact can access</small>                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Settings</h4>
-                                                <div class="form-group">
-                                                    <div class="checkbox-group">
-                                                        <input type="checkbox" id="require_emergency_password" name="require_emergency_password" class="enhanced-checkbox">
-                                                        <label for="require_emergency_password" class="checkbox-label">
-                                                            <i class="fas fa-lock"></i> Require custom password for access
-                                                        </label>
-                                                    </div>
-                                                    <small class="form-help">Add an extra layer of security with a custom password</small>
-                                                    
-                                                    <div id="emergency_password_section" style="display: none; margin-top: 1rem;">
-                                                        <label for="emergency_access_password" class="enhanced-label">
-                                                            <i class="fas fa-key"></i> Custom Access Password
-                                                        </label>
-                                                        <div class="password-input-group">
-                                                            <input type="password" id="emergency_access_password" name="emergency_access_password" class="enhanced-input password-input" 
-                                                                   placeholder="Enter custom password for emergency access">
-                                                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('emergency_access_password')">
-                                                                <i class="fas fa-eye" id="emergency_access_password_icon"></i>
-                                                            </button>
-                                                        </div>
-                                                        <small class="form-help">Share this password securely with your emergency contact</small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-exclamation-triangle"></i> Trigger Conditions</h4>
-                                                <div class="form-group">
-                                                    <label class="enhanced-label">
-                                                        <i class="fas fa-clock"></i> Automatic Trigger
-                                                    </label>
-                                                    <div class="radio-group">
-                                                        <label class="radio-label">
-                                                            <input type="radio" name="trigger_type" value="inactivity" checked>
-                                                            <span class="radio-custom"></span>
-                                                            <div class="radio-content">
-                                                                <strong>Inactivity Trigger</strong>
-                                                                <small>Activate after no login for specified period</small>
-                                                            </div>
-                                                        </label>
-                                                        <label class="radio-label">
-                                                            <input type="radio" name="trigger_type" value="manual">
-                                                            <span class="radio-custom"></span>
-                                                            <div class="radio-content">
-                                                                <strong>Manual Only</strong>
-                                                                <small>Only activate when manually triggered</small>
-                                                            </div>
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div id="inactivity_settings" class="form-group">
-                                                    <label for="inactivity_days" class="enhanced-label">
-                                                        <i class="fas fa-calendar-times"></i> Inactivity Period
-                                                    </label>
-                                                    <select id="inactivity_days" name="inactivity_days" class="enhanced-input">
-                                                        <option value="30" selected>30 Days</option>
-                                                        <option value="60">60 Days</option>
-                                                        <option value="90">90 Days</option>
-                                                        <option value="180">6 Months</option>
-                                                        <option value="365">1 Year</option>
-                                                    </select>
-                                                    <small class="form-help">Emergency access will be triggered if you don't log in for this period</small>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-envelope-open-text"></i> Emergency Message</h4>
-                                                <div class="form-group">
-                                                    <label for="emergency_instructions" class="enhanced-label">
-                                                        <i class="fas fa-scroll"></i> Instructions for Emergency Contact
-                                                    </label>
-                                                    <textarea id="emergency_instructions" name="emergency_instructions" class="enhanced-input enhanced-textarea" rows="6" 
-                                                              placeholder="Write instructions for your emergency contact about what to do with the shared credentials..." required></textarea>
-                                                    <div class="textarea-counter">
-                                                        <span id="emergencyInstructionsCounter">0</span> characters
-                                                    </div>
-                                                    <small class="form-help">Explain to your contact what these credentials are for and how to use them responsibly</small>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-actions">
-                                                <button type="button" class="btn btn-secondary" onclick="clearEmergencyForm()">
-                                                    <i class="fas fa-eraser"></i> Clear Form
-                                                </button>
-                                                <button type="submit" class="btn btn-primary btn-enhanced">
-                                                    <i class="fas fa-shield-heart"></i> Setup Emergency Contact
-                                                    <span class="btn-animation"></span>
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Manage Sends Tab -->
+                            </div>                            <!-- Manage Sends Tab -->
                             <div id="manageTab" class="send-tab-content">
                                 <div class="card enhanced-card">
                                     <div class="card-header gradient-header">
@@ -6072,14 +5779,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                     credentialMessageTextarea.addEventListener('input', updateCredentialMessageCounter);
                     updateCredentialMessageCounter();
                 }
-                
-                // Initialize emergency contact form
-                const emergencyInstructionsTextarea = document.getElementById('emergency_instructions');
-                if (emergencyInstructionsTextarea) {
-                    emergencyInstructionsTextarea.addEventListener('input', updateEmergencyInstructionsCounter);
-                    updateEmergencyInstructionsCounter();
-                }
-                  // Initialize password requirement toggle for credential delivery
+                    // Initialize password requirement toggle for credential delivery
                 const requirePasswordCheckbox = document.getElementById('require_password_credential');
                 if (requirePasswordCheckbox) {
                     requirePasswordCheckbox.addEventListener('change', function() {
@@ -6088,29 +5788,8 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                             passwordSection.style.display = this.checked ? 'block' : 'none';
                         }
                     });
-                }
-                
-                // Initialize password requirement toggle for emergency contact
-                const requireEmergencyPasswordCheckbox = document.getElementById('require_emergency_password');
-                if (requireEmergencyPasswordCheckbox) {
-                    requireEmergencyPasswordCheckbox.addEventListener('change', function() {
-                        const passwordSection = document.getElementById('emergency_password_section');
-                        if (passwordSection) {
-                            passwordSection.style.display = this.checked ? 'block' : 'none';
-                        }
-                    });
-                }
-                
-                // Initialize trigger type toggle for emergency contact
-                const triggerRadios = document.querySelectorAll('input[name="trigger_type"]');
-                triggerRadios.forEach(radio => {
-                    radio.addEventListener('change', function() {
-                        const inactivitySettings = document.getElementById('inactivity_settings');
-                        if (inactivitySettings) {
-                            inactivitySettings.style.display = this.value === 'inactivity' ? 'block' : 'none';
-                        }
-                    });
-                });            }
+                }                
+            }
             
             // Initialize text counter for secure send
             const sendTextarea = document.getElementById('send_text');
@@ -6897,33 +6576,13 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             if (passwordSection) {
                 passwordSection.style.display = 'none';
             }
-        }
-        
-        function clearEmergencyForm() {
-            document.getElementById('emergencyContactForm').reset();
-            updateEmergencyInstructionsCounter();
-            
-            // Show inactivity settings by default
-            const inactivitySettings = document.getElementById('inactivity_settings');
-            if (inactivitySettings) {
-                inactivitySettings.style.display = 'block';
-            }
-        }
-        
+        }        
         function updateCredentialMessageCounter() {
             const textarea = document.getElementById('credential_message');
             const counter = document.getElementById('credentialMessageCounter');
             if (textarea && counter) {
                 counter.textContent = textarea.value.length;
-            }
-        }
-          function updateEmergencyInstructionsCounter() {
-            const textarea = document.getElementById('emergency_instructions');
-            const counter = document.getElementById('emergencyInstructionsCounter');
-            if (textarea && counter) {
-                counter.textContent = textarea.value.length;
-            }
-        }
+            }        }
         
         // Enhanced file handling functions
         function handleFileSelection(input) {
