@@ -1748,6 +1748,92 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             text-align: center;
         }
 
+        /* Items checklist styles for multiple selection */
+        .items-checklist {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            margin-top: 1rem;
+        }
+
+        .item-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .item-checkbox:last-child {
+            border-bottom: none;
+        }
+
+        .item-checkbox:hover {
+            background: #f8fafc;
+        }
+
+        .item-checkbox.selected {
+            background: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .item-checkbox input[type="checkbox"] {
+            margin-right: 1rem;
+            transform: scale(1.2);
+        }
+
+        .item-label {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .item-icon {
+            width: 40px;
+            height: 40px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+            color: var(--primary);
+        }
+
+        .item-name {
+            font-weight: 600;
+            color: var(--dark);
+            margin-right: 0.5rem;
+        }
+
+        .item-type {
+            color: #64748b;
+            font-size: 0.875rem;
+            font-style: italic;
+        }
+
+        .selection-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .selection-count {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-left: 1rem;
+        }
+
         /* Radio Group Styles */
         .radio-group {
             display: flex;
@@ -5859,14 +5945,176 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.body.appendChild(form);
                 form.submit();
             }
-        }
-
-        // Close modal when clicking outside
+        }        // Close modal when clicking outside
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) {
                 event.target.style.display = 'none';
             }
-        }        // Initialize
+        }
+
+        // Credential delivery selection mode functions
+        function handleSelectionModeChange() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+            
+            console.log('Selection mode changed to:', selectedMode); // Debug log
+            
+            // Hide all selection sections
+            const singleSection = document.getElementById('single_selection');
+            const multipleSection = document.getElementById('multiple_selection');
+            const allSection = document.getElementById('all_selection');
+            
+            if (singleSection) singleSection.style.display = 'none';
+            if (multipleSection) multipleSection.style.display = 'none';
+            if (allSection) allSection.style.display = 'none';
+            
+            // Show the selected section
+            switch (selectedMode) {
+                case 'single':
+                    if (singleSection) {
+                        singleSection.style.display = 'block';
+                        console.log('Showing single selection');
+                    }
+                    // Clear any previous selections
+                    const singleSelect = document.getElementById('vault_item_id');
+                    if (singleSelect) singleSelect.value = '';
+                    break;
+                case 'multiple':
+                    if (multipleSection) {
+                        multipleSection.style.display = 'block';
+                        console.log('Showing multiple selection');
+                    }
+                    // Ensure checkboxes are properly enabled and can be multiple selected
+                    const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.disabled = false;
+                        // Clear previous selections when switching modes
+                        checkbox.checked = false;
+                        const itemBox = checkbox.closest('.item-checkbox');
+                        if (itemBox) itemBox.classList.remove('selected');
+                    });
+                    break;
+                case 'all':
+                    if (allSection) {
+                        allSection.style.display = 'block';
+                        console.log('Showing all selection');
+                    }
+                    // For all items mode, populate the preview
+                    populateAllItemsPreview();
+                    break;
+            }
+            
+            // Update form validation
+            updateFormValidation();
+        }
+        
+        function handleCheckboxChange() {
+            // Allow multiple selections - this is the core functionality
+            const checkedBoxes = document.querySelectorAll('input[name="vault_items[]"]:checked');
+            
+            console.log('Checkboxes changed, checked count:', checkedBoxes.length); // Debug log
+            
+            // Provide visual feedback for all selections
+            const allCheckboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            allCheckboxes.forEach(checkbox => {
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) {
+                    if (checkbox.checked) {
+                        itemBox.classList.add('selected');
+                    } else {
+                        itemBox.classList.remove('selected');
+                    }
+                }
+            });
+            
+            // Update form validation
+            updateFormValidation();
+            
+            // Show selection count
+            updateMultipleSelectionCount(checkedBoxes.length);
+        }
+        
+        function updateMultipleSelectionCount(count) {
+            let countDisplay = document.getElementById('selection-count');
+            if (!countDisplay) {
+                countDisplay = document.createElement('div');
+                countDisplay.id = 'selection-count';
+                countDisplay.className = 'selection-count';
+                const multipleSection = document.getElementById('multiple_selection');
+                if (multipleSection) {
+                    multipleSection.appendChild(countDisplay);
+                }
+            }
+            
+            if (count > 0) {
+                countDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${count} item${count !== 1 ? 's' : ''} selected`;
+                countDisplay.style.display = 'flex';
+            } else {
+                countDisplay.style.display = 'none';
+            }
+        }
+        
+        function populateAllItemsPreview() {
+            // This function can be enhanced later if needed
+            console.log('All items preview populated');
+        }
+        
+        function updateFormValidation() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+            const submitButton = document.querySelector('#credentialDeliveryForm button[type="submit"]');
+            let isValid = true;
+            let errorMessage = '';
+            
+            switch (selectedMode) {
+                case 'single':
+                    const singleSelect = document.getElementById('vault_item_id');
+                    isValid = singleSelect && singleSelect.value !== '';
+                    errorMessage = 'Please select a vault item to share.';
+                    break;
+                case 'multiple':
+                    const checkedBoxes = document.querySelectorAll('input[name="vault_items[]"]:checked');
+                    isValid = checkedBoxes.length > 0;
+                    errorMessage = 'Please select at least one vault item to share.';
+                    break;
+                case 'all':
+                    isValid = true; // All items mode is always valid if user has items
+                    break;
+            }
+            
+            if (submitButton) {
+                submitButton.disabled = !isValid;
+                if (!isValid) {
+                    submitButton.title = errorMessage;
+                    submitButton.classList.add('disabled');
+                } else {
+                    submitButton.title = '';
+                    submitButton.classList.remove('disabled');
+                }
+            }
+        }
+        
+        function selectAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) itemBox.classList.add('selected');
+            });
+            updateMultipleSelectionCount(checkboxes.length);
+            updateFormValidation();
+        }
+        
+        function clearAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) itemBox.classList.remove('selected');
+            });
+            updateMultipleSelectionCount(0);
+            updateFormValidation();
+        }
+
+        // Initialize
         document.addEventListener('DOMContentLoaded', function() {            // Initialize generator if on generator page
             if (window.location.search.includes('section=generator')) {
                 // Set up slider synchronization
