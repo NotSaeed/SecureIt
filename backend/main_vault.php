@@ -722,21 +722,6 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             color: var(--primary);
         }
 
-        .btn.disabled,
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        .btn.disabled:hover,
-        .btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-
         .btn-success {
             background: linear-gradient(135deg, var(--success), var(--secondary));
             color: var(--white);
@@ -761,24 +746,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-weight: 600;
         }
 
-        .info-box p {
-            margin: 0;
-            font-size: 0.875rem;
-            color: var(--gray);
-        }
-
-        .multiple-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.75rem;
-        }
-
-        .btn-sm {
-            padding: 0.5rem 0.75rem;
-            font-size: 0.75rem;
-        }
-
-        .textarea-counter {
+        /* Forms */
         .form-group {
             margin-bottom: 1.5rem;
         }        .form-label {
@@ -4440,14 +4408,22 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                         </select>
                                                         <small class="form-help">Select which vault item you want to share temporarily</small>
                                                     </div>
-                                                </div>
-
-                                                <!-- Multiple Items Selection -->
+                                                </div>                                                <!-- Multiple Items Selection -->
                                                 <div id="multiple_selection" class="selection-section" style="display: none;">
                                                     <div class="form-group">
                                                         <label class="enhanced-label">
                                                             <i class="fas fa-check-square"></i> Choose Items to Share
                                                         </label>
+                                                        
+                                                        <div class="selection-controls">
+                                                            <button type="button" onclick="selectAllItems()" class="btn-small btn-secondary">
+                                                                <i class="fas fa-check-double"></i> Select All
+                                                            </button>
+                                                            <button type="button" onclick="clearAllItems()" class="btn-small btn-secondary">
+                                                                <i class="fas fa-times"></i> Clear All
+                                                            </button>
+                                                        </div>
+                                                        
                                                         <div class="items-checklist">
                                                             <?php if ($isLoggedIn): ?>
                                                                 <?php
@@ -4478,29 +4454,63 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                                 <?php } ?>
                                                             <?php endif; ?>
                                                         </div>
-                                                        <small class="form-help">Select multiple vault items to share in one delivery</small>
-                                                        <div class="multiple-actions">
-                                                            <button type="button" class="btn btn-secondary btn-sm" onclick="selectAllItems()">
-                                                                <i class="fas fa-check-square"></i> Select All
-                                                            </button>
-                                                            <button type="button" class="btn btn-secondary btn-sm" onclick="deselectAllItems()">
-                                                                <i class="fas fa-square"></i> Deselect All
-                                                            </button>
-                                                        </div>
+                                                        <small class="form-help">Select multiple vault items to share in one delivery. You can select as many items as you want.</small>
                                                     </div>
-                                                </div>
-
-                                                <!-- All Items Selection -->
+                                                </div><!-- All Items Selection -->
                                                 <div id="all_selection" class="selection-section" style="display: none;">
                                                     <div class="form-group">
                                                         <div class="info-box">
                                                             <i class="fas fa-info-circle"></i>
                                                             <div>
                                                                 <strong>Share All Vault Items</strong>
-                                                                <p>This will share all items in your vault with the recipient. Use with caution and only with trusted individuals.</p>
+                                                                <p>This will share all items in your vault. Use with caution and only with trusted individuals.</p>
+                                                                <?php if ($isLoggedIn): ?>
+                                                                    <?php
+                                                                    try {
+                                                                        $vault = new Vault();
+                                                                        $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                        $itemCount = count($allItems);
+                                                                        echo "<p><strong>Total items to share: {$itemCount}</strong></p>";
+                                                                    } catch (Exception $e) {
+                                                                        echo "<p><em>Error loading vault items</em></p>";
+                                                                    }
+                                                                    ?>
+                                                                <?php endif; ?>
                                                             </div>
                                                         </div>
-                                                    </div>                                                </div>
+                                                        
+                                                        <?php if ($isLoggedIn): ?>
+                                                            <div class="all-items-list">
+                                                                <h5><i class="fas fa-list"></i> Items that will be shared:</h5>
+                                                                <div class="items-preview">
+                                                                    <?php
+                                                                    try {
+                                                                        $vault = new Vault();
+                                                                        $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                        foreach ($allItems as $item):
+                                                                            $itemIcon = '';
+                                                                            switch ($item['item_type']) {
+                                                                                case 'login': $itemIcon = '🔐'; break;
+                                                                                case 'card': $itemIcon = '💳'; break;
+                                                                                case 'identity': $itemIcon = '🆔'; break;
+                                                                                case 'note': $itemIcon = '📝'; break;
+                                                                                default: $itemIcon = '🔑';
+                                                                            }
+                                                                    ?>
+                                                                        <div class="preview-item">
+                                                                            <span class="preview-icon"><?= $itemIcon ?></span>
+                                                                            <span class="preview-name"><?= htmlspecialchars($item['item_name']) ?></span>
+                                                                            <span class="preview-type">(<?= ucfirst($item['item_type']) ?>)</span>
+                                                                        </div>
+                                                                    <?php endforeach; ?>
+                                                                    <?php } catch (Exception $e) { ?>
+                                                                        <div class="error-message">Error loading vault items</div>
+                                                                    <?php } ?>
+                                                                </div>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
                                             </div>
                                             
                                             <div class="form-section">
