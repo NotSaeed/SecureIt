@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Login - Test Autofill Badge</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background: #0d1117;
+            color: #f0f6fc;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: #161b22;
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid #30363d;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .logo-text {
+            font-size: 28px;
+            font-weight: 600;
+            color: #f0f6fc;
+            margin: 0;
+        }
+        
+        .subtitle {
+            color: #8b949e;
+            margin: 5px 0 0 0;
+            font-size: 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #f0f6fc;
+            font-size: 14px;
+        }
+        
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #0d1117;
+            color: #f0f6fc;
+            font-size: 16px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            box-sizing: border-box;
+        }
+        
+        input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #1f6feb;
+            box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.3);
+        }
+        
+        .sign-in-btn {
+            width: 100%;
+            padding: 12px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-bottom: 20px;
+        }
+        
+        .sign-in-btn:hover {
+            background: #2ea043;
+        }
+        
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+            color: #8b949e;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #30363d;
+        }
+        
+        .divider span {
+            background: #161b22;
+            padding: 0 16px;
+        }
+        
+        .create-account-btn {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            color: #1f6feb;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .create-account-btn:hover {
+            background: #0c2d6b;
+            border-color: #1f6feb;
+        }
+        
+        .test-info {
+            background: #0969da;
+            color: white;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .test-info h4 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+        }
+        
+        .test-info p {
+            margin: 0;
+            line-height: 1.4;
+        }
+        
+        .badge-demo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #21262d;
+            color: #f0f6fc;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .badge-demo h5 {
+            margin: 0 0 8px 0;
+            color: #1f6feb;
+        }
+        
+        .extension-icon {
+            width: 20px;
+            height: 20px;
+            background: #1f6feb;
+            border-radius: 4px;
+            display: inline-block;
+            position: relative;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        .badge-number {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #1f6feb;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #161b22;
+        }
+    </style>
+</head>
+<body>
+    <div class="badge-demo">
+        <h5>📊 Autofill Test Demo</h5>
+        <p>Expected: <span class="extension-icon"><span class="badge-number">1</span></span> Badge on extension icon</p>
+        <p>Save credentials for github.com in your vault to test!</p>
+    </div>
+
+    <div class="login-container">
+        <div class="test-info">
+            <h4>🧪 Autofill Badge Test</h4>
+            <p>This page simulates GitHub login. If you have credentials saved for github.com in your SecureIt vault, you should see a badge number on the extension icon!</p>
+        </div>
+        
+        <div class="logo-section">
+            <div class="logo">🐙</div>
+            <h1 class="logo-text">GitHub</h1>
+            <p class="subtitle">Sign in to your account</p>
+        </div>
+        
+        <form>
+            <div class="form-group">
+                <label for="login">Username or email address</label>
+                <input type="text" id="login" name="login" autocomplete="username" placeholder="Enter your username or email">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" placeholder="Enter your password">
+            </div>
+            
+            <button type="submit" class="sign-in-btn">Sign in</button>
+            
+            <div class="divider">
+                <span>or</span>
+            </div>
+            
+            <button type="button" class="create-account-btn">Create an account</button>
+        </form>
+    </div>
+
+    <script>
+        // Simulate form submission
+        document.querySelector('form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('This is a test page - form submission blocked!');
+        });
+        
+        // Show current domain info
+        console.log('Current domain for autofill:', window.location.hostname);
+        console.log('URL:', window.location.href);
+    </script>
+</body>
+</html>
