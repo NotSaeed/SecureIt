@@ -5,8 +5,12 @@ session_start();
 require_once 'classes/Database.php';
 require_once 'classes/SendManager.php';
 
-$accessLink = $_GET['link'] ?? $_GET['id'] ?? '';
+$accessLink = $_GET['send'] ?? $_GET['link'] ?? $_GET['id'] ?? '';
 $password = $_POST['password'] ?? $_GET['password'] ?? $_SESSION['temp_password'] ?? '';
+
+// Check if user was already authenticated for this send
+$sessionKey = 'temp_download_access_' . $accessLink;
+$isPreAuthenticated = isset($_SESSION[$sessionKey]) && $_SESSION[$sessionKey] === true;
 
 if (empty($accessLink)) {
     http_response_code(404);
@@ -16,37 +20,58 @@ if (empty($accessLink)) {
 try {
     $sendManager = new SendManager();
     
-    // Try to get the send with password if provided
-    try {
-        if (!empty($password)) {
-            $send = $sendManager->getSend($accessLink, $password);
-        } else {
-            $send = $sendManager->getSend($accessLink);
-        }
-    } catch (Exception $e) {
-        // If password required, show password form
-        if (strpos($e->getMessage(), 'password') !== false) {
-            showPasswordForm($accessLink, $e->getMessage());
-            exit;
-        } else {
-            throw $e;
-        }
+    // First check if send exists and if password is required
+    $tempSend = $sendManager->getSend($accessLink);
+    
+    if (!$tempSend) {
+        http_response_code(404);
+        die('Send not found or expired');
+    }
+      // Check if password is required and user is not pre-authenticated
+    if ($tempSend['password_hash'] && empty($password) && !$isPreAuthenticated) {
+        showPasswordForm($accessLink, 'Password required for this download');
+        exit;
+    }
+      // Access the send
+    if ($isPreAuthenticated) {
+        // User is pre-authenticated, get send directly without incrementing view count
+        $result = ['success' => true, 'send' => $tempSend];
+    } else {
+        // Normal access (will increment view count)
+        $result = $sendManager->accessSend($accessLink, $password);
     }
     
-    if ($send['send_type'] !== 'file') {
+    if (!$result['success']) {
+        if (strpos($result['message'], 'password') !== false) {
+            showPasswordForm($accessLink, $result['message']);
+            exit;
+        } else {
+            http_response_code(400);
+            die($result['message']);
+        }
+    }
+      $send = $result['send'];
+    
+    if ($send['type'] !== 'file') {
         http_response_code(400);
         die('This send is not a file');
+    }
+    
+    // Check if this is a BLOB-stored image
+    if ($send['storage_type'] === 'blob') {
+        http_response_code(400);
+        die('This file is an image. Please view it directly in the browser.');
     }
     
     $filePath = $send['file_path'];
     
     if (!file_exists($filePath)) {
         http_response_code(404);
-        die('File not found on server');
+        die('File not found on server: ' . $filePath);
     }
     
-    // Get file info
-    $fileName = $send['content']; // Original filename stored in content
+    // Get file info - original filename is stored in file_name, not content
+    $fileName = $send['file_name'] ?: 'download'; // Use file_name field
     $fileSize = filesize($filePath);
     $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
     
@@ -60,10 +85,14 @@ try {
     header('Cache-Control: no-cache, must-revalidate');
     header('Pragma: no-cache');
     header('Expires: 0');
-    
-    // Clear any output buffers
+      // Clear any output buffers
     if (ob_get_level()) {
         ob_end_clean();
+    }
+    
+    // Clean up session flag after successful download
+    if (isset($_SESSION[$sessionKey])) {
+        unset($_SESSION[$sessionKey]);
     }
     
     // Output file

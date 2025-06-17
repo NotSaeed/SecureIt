@@ -11,6 +11,22 @@ $error = '';
 $success = '';
 $isLoggedIn = isset($_SESSION['user_id']);
 
+// Handle session messages from redirects
+if (isset($_SESSION['message'])) {
+    if ($_SESSION['message_type'] === 'success') {
+        $success = $_SESSION['message'];
+    } else {
+        $error = $_SESSION['message'];    }
+    unset($_SESSION['message'], $_SESSION['message_type']);
+}
+
+// Handle special success messages for sends
+$sendSuccessLink = '';
+if (isset($_SESSION['send_success_link'])) {
+    $sendSuccessLink = $_SESSION['send_success_link'];
+    unset($_SESSION['send_success_link']);
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -25,13 +41,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['user_id'] = $authenticatedUser->id;
                     $_SESSION['user_email'] = $authenticatedUser->email;
                     $_SESSION['user_name'] = $authenticatedUser->name;
-                    $success = 'Login successful!';
-                    $isLoggedIn = true;
+                    $_SESSION['message'] = 'Login successful!';
+                    $_SESSION['message_type'] = 'success';
+                    // Redirect to prevent form resubmission
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=dashboard');
+                    exit();
                 } else {
-                    $error = 'Invalid email or password';
+                    $_SESSION['message'] = 'Invalid email or password';
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF']);
+                    exit();
                 }
             } catch (Exception $e) {
-                $error = 'Login failed: ' . $e->getMessage();
+                $_SESSION['message'] = 'Login failed: ' . $e->getMessage();
+                $_SESSION['message_type'] = 'error';
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
             }
             break;
             
@@ -43,14 +68,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id'] = $newUser->id;
                 $_SESSION['user_email'] = $newUser->email;
                 $_SESSION['user_name'] = $newUser->name;
-                $success = 'Registration successful! Welcome to SecureIt!';
-                $isLoggedIn = true;
+                $_SESSION['message'] = 'Registration successful! Welcome to SecureIt!';
+                $_SESSION['message_type'] = 'success';
+                // Redirect to prevent form resubmission
+                header('Location: ' . $_SERVER['PHP_SELF'] . '?section=dashboard');
+                exit();
             } catch (Exception $e) {
-                $error = 'Registration failed: ' . $e->getMessage();
+                $_SESSION['message'] = 'Registration failed: ' . $e->getMessage();
+                $_SESSION['message_type'] = 'error';
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
             }
             break;
-            
-        case 'add_vault_item':
+              case 'add_vault_item':
             if ($isLoggedIn) {
                 try {
                     $vault = new Vault();
@@ -77,73 +107,311 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_POST['website_url'] ?? null
                     );
                     
-                    $success = 'Item added successfully!';
+                    $_SESSION['message'] = 'Item added successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to add item: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to add item: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 }
             }
-            break;
-              case 'delete_vault_item':
+            break;              case 'delete_vault_item':
             if ($isLoggedIn && isset($_POST['item_id'])) {
                 try {
                     $vault = new Vault();
                     $vault->deleteItem($_POST['item_id'], $_SESSION['user_id']);
-                    $success = 'Item deleted successfully!';
+                    $_SESSION['message'] = 'Item deleted successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to delete item: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to delete item: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=vault');
+                    exit();
                 }
             }
-            break;
-            
-        case 'create_secure_send':
+            break;        case 'create_secure_send':
             if ($isLoggedIn) {
                 try {
                     $sendManager = new SendManager();
-                    
-                    // Get form data
+                      // Get form data
                     $name = trim($_POST['send_name'] ?? '');
-                    $content = trim($_POST['send_text'] ?? '');
-                    $sendType = 'text'; // Default to text
+                    $textContent = trim($_POST['send_text'] ?? '');
+                    $selectedType = trim($_POST['send_type'] ?? 'text'); // Get the selected type from radio buttons
                     
                     // Validate required fields
                     if (empty($name)) {
                         throw new Exception('Send name is required');
                     }
-                    if (empty($content)) {
-                        throw new Exception('Content is required');
-                    }
                     
-                    // Parse deletion date
-                    $deletionDays = (int)($_POST['deletion_days'] ?? 7);
-                    $deletionDate = date('Y-m-d H:i:s', strtotime("+{$deletionDays} days"));
+                    // Determine send type and content
+                    $sendType = 'text';
+                    $content = $textContent;                    // Determine if user intended to upload a file (based on radio selection and file presence)
+                    $userSelectedFile = ($selectedType === 'file');
+                    $fileProvided = (!empty($_FILES['send_file']['name']) || $_FILES['send_file']['error'] !== UPLOAD_ERR_NO_FILE);
+                    $intendedFileUpload = $fileProvided; // Only true if file was actually provided
                     
-                    // Build options array
+                    // Check if file upload is provided and successful
+                    if (isset($_FILES['send_file']) && $_FILES['send_file']['error'] === UPLOAD_ERR_OK) {
+                        $sendType = 'file';
+                        
+                        // Validate file size
+                        if ($_FILES['send_file']['size'] > 50 * 1024 * 1024) { // 50MB limit
+                            throw new Exception('File size must be less than 50MB');
+                        }
+                        
+                        // Create uploads directory if it doesn't exist
+                        $uploadDir = 'uploads/sends/';
+                        if (!is_dir($uploadDir)) {
+                            if (!mkdir($uploadDir, 0755, true)) {
+                                throw new Exception('Failed to create upload directory');
+                            }
+                        }
+                        
+                        // Check if directory is writable
+                        if (!is_writable($uploadDir)) {
+                            throw new Exception('Upload directory is not writable');
+                        }
+                        
+                        // Generate unique filename to prevent conflicts
+                        $originalName = $_FILES['send_file']['name'];
+                        $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+                        $safeName = preg_replace('/[^a-zA-Z0-9.]/', '_', $originalName);
+                        $uniqueFileName = uniqid('send_', true) . '_' . $safeName;
+                        $uploadPath = $uploadDir . $uniqueFileName;
+                        
+                        // Check if source file exists
+                        if (!file_exists($_FILES['send_file']['tmp_name'])) {
+                            throw new Exception('Temporary upload file not found');
+                        }
+                        
+                        // Move uploaded file
+                        if (!move_uploaded_file($_FILES['send_file']['tmp_name'], $uploadPath)) {
+                            $error = error_get_last();
+                            throw new Exception('Failed to move uploaded file: ' . ($error['message'] ?? 'Unknown error'));
+                        }
+                        
+                        // Verify file was moved successfully
+                        if (!file_exists($uploadPath)) {
+                            throw new Exception('File upload verification failed');
+                        }
+                          // Set content as original filename (don't set options here yet)
+                        $content = $originalName;                    } else if ($intendedFileUpload && isset($_FILES['send_file']) && $_FILES['send_file']['error'] !== UPLOAD_ERR_OK) {
+                        // Handle upload errors - only if user actually tried to upload a file
+                        $uploadErrors = [
+                            UPLOAD_ERR_INI_SIZE => 'File size exceeds server limit',
+                            UPLOAD_ERR_FORM_SIZE => 'File size exceeds form limit',
+                            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                            UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+                            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary upload directory',
+                            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                            UPLOAD_ERR_EXTENSION => 'File upload stopped by extension'
+                        ];
+                        $errorMessage = $uploadErrors[$_FILES['send_file']['error']] ?? 'Unknown upload error';
+                        throw new Exception('File upload error: ' . $errorMessage);
+                    } else if ($userSelectedFile && !$fileProvided) {
+                        // User selected file mode but didn't provide a file
+                        throw new Exception('Please select a file to upload or switch to text mode');
+                    } else if (empty($textContent) && !$userSelectedFile) {
+                        // User selected text mode but didn't provide text content
+                        throw new Exception('Please provide text content');
+                    } else if (empty($textContent) && $userSelectedFile && !$fileProvided) {
+                        // User selected file mode but didn't provide file or text fallback
+                        throw new Exception('Please select a file to upload or switch to text mode');
+                    }// Parse deletion date based on type
+                    if ($_POST['expiry_type'] === 'custom' && !empty($_POST['custom_expiry'])) {
+                        $deletionDate = date('Y-m-d H:i:s', strtotime($_POST['custom_expiry']));
+                        // Validate the custom date is in the future
+                        if (strtotime($deletionDate) <= time()) {
+                            throw new Exception('Expiry date must be in the future');
+                        }
+                    } else {
+                        $deletionMinutes = (int)($_POST['deletion_preset'] ?? 10080); // Default 7 days in minutes
+                        $deletionDate = date('Y-m-d H:i:s', strtotime("+{$deletionMinutes} minutes"));
+                    }                    // Initialize options array
                     $options = [
-                        'deletion_date' => $deletionDate,
+                        'expiration_date' => $deletionDate,
                         'password' => !empty($_POST['send_password']) ? $_POST['send_password'] : null,
                         'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
-                        'hide_email' => !empty($_POST['hide_email'])
+                        'anonymous' => !empty($_POST['anonymous'])
                     ];
+                    
+                    // Add file_path to options if file was uploaded
+                    if ($sendType === 'file' && isset($uploadPath)) {
+                        $options['file_path'] = $uploadPath;
+                    }
                     
                     $result = $sendManager->createSend($_SESSION['user_id'], $sendType, $name, $content, $options);
                     
-                    $success = "Secure send created successfully! Share this link: " . 
-                               "http://localhost/SecureIt/backend/access_send.php?link=" . $result['access_link'];
+                    $_SESSION['send_success_link'] = $result['access_link'];
+                    $_SESSION['message'] = "Secure send created successfully!";
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&success=1');
+                    exit();
                     
                 } catch (Exception $e) {
-                    $error = 'Failed to create secure send: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to create secure send: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 }
             }
-            break;
-            
-        case 'delete_send':
+            break;case 'delete_send':
             if ($isLoggedIn && isset($_POST['send_id'])) {
                 try {
                     $sendManager = new SendManager();
                     $sendManager->deleteSend($_POST['send_id'], $_SESSION['user_id']);
-                    $success = 'Send deleted successfully!';
+                    $_SESSION['message'] = 'Send deleted successfully!';
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 } catch (Exception $e) {
-                    $error = 'Failed to delete send: ' . $e->getMessage();
+                    $_SESSION['message'] = 'Failed to delete send: ' . $e->getMessage();                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');                    exit();
+                }            }
+            break;
+              case 'get_send_password':
+            if ($isLoggedIn && isset($_POST['send_id'])) {
+                try {
+                    $sendManager = new SendManager();
+                    $password = $sendManager->getSendPassword($_POST['send_id'], $_SESSION['user_id']);
+                    
+                    header('Content-Type: application/json');
+                    if ($password !== null) {
+                        if ($password === 'LEGACY_PASSWORD_PROTECTED') {
+                            echo json_encode([
+                                'success' => false, 
+                                'message' => 'This send is password protected, but the password cannot be retrieved for security reasons. This affects sends created before the latest update.',
+                                'isLegacy' => true
+                            ]);
+                        } else {
+                            echo json_encode(['success' => true, 'password' => $password]);
+                        }
+                    } else {
+                        echo json_encode(['success' => false, 'message' => 'Password not found or no password set']);
+                    }
+                    exit();
+                } catch (Exception $e) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'message' => 'Error retrieving password: ' . $e->getMessage()]);
+                    exit();
+                }            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Invalid request or not logged in']);
+                exit();
+            }
+            break;
+            
+        case 'get_vault_passwords_for_analysis':
+            if ($isLoggedIn) {
+                try {
+                    $vault = new Vault();
+                    $vaultItems = $vault->getUserItems($_SESSION['user_id']);
+                    
+                    $passwords = [];
+                    foreach ($vaultItems as $item) {
+                        if ($item['item_type'] === 'login' && !empty($item['password'])) {
+                            $passwords[] = [
+                                'id' => $item['id'],
+                                'name' => $item['item_name'],
+                                'website' => $item['website_url'] ?? 'No website',
+                                'username' => $item['username'] ?? 'No username',
+                                'password' => $item['password']
+                            ];
+                        }
+                    }
+                    
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'passwords' => $passwords]);
+                    exit();
+                } catch (Exception $e) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'message' => 'Error loading vault passwords: ' . $e->getMessage()]);
+                    exit();
+                }
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Not logged in']);
+                exit();
+            }
+            break;case 'create_credential_delivery':
+            if ($isLoggedIn) {
+                // Add debugging
+                error_log("Credential delivery form submitted");
+                error_log("POST data: " . print_r($_POST, true));
+                
+                try {
+                    $sendManager = new SendManager();
+                    
+                    // Determine selection mode and get vault items
+                    $selectionMode = $_POST['selection_mode'] ?? 'single';
+                    $vaultItemIds = [];
+                    
+                    error_log("Selection mode: " . $selectionMode);
+                    
+                    switch ($selectionMode) {
+                        case 'single':
+                            if (empty($_POST['vault_item_id'])) {
+                                throw new Exception('Please select a vault item for credential delivery');
+                            }
+                            $vaultItemIds = [$_POST['vault_item_id']];
+                            break;
+                            
+                        case 'multiple':
+                            if (empty($_POST['vault_items']) || !is_array($_POST['vault_items'])) {
+                                throw new Exception('Please select at least one vault item for credential delivery');
+                            }
+                            $vaultItemIds = $_POST['vault_items'];
+                            break;
+                            
+                        case 'all':
+                            // Get all user's vault items
+                            $vault = new Vault();
+                            $allItems = $vault->getUserItems($_SESSION['user_id']);
+                            if (empty($allItems)) {
+                                throw new Exception('No vault items found to share');
+                            }
+                            $vaultItemIds = array_column($allItems, 'id');
+                            break;
+                            
+                        default:
+                            throw new Exception('Invalid selection mode');
+                    }
+                    
+                    error_log("Vault item IDs: " . print_r($vaultItemIds, true));
+                      // Build options array
+                    $options = [
+                        'message' => trim($_POST['message'] ?? ''),
+                        'access_password' => !empty($_POST['access_password']) ? $_POST['access_password'] : null,
+                        'expiry_hours' => (int)($_POST['expiry_hours'] ?? 24), // Default 24 hours for credential delivery
+                        'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
+                        'selection_mode' => $selectionMode
+                    ];
+                    
+                    error_log("Options: " . print_r($options, true));
+                      $result = $sendManager->createMultiCredentialDelivery(
+                        $_SESSION['user_id'],
+                        $vaultItemIds,
+                        $options
+                    );
+                    
+                    error_log("Result: " . print_r($result, true));
+                      $_SESSION['send_success_link'] = $result['access_link'];
+                    $_SESSION['message'] = "Credential delivery created successfully!";
+                    $_SESSION['message_type'] = 'success';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&credential_success=1');
+                    exit();
+                    
+                } catch (Exception $e) {
+                    error_log("Credential delivery error: " . $e->getMessage());
+                    $_SESSION['message'] = 'Failed to create credential delivery: ' . $e->getMessage();
+                    $_SESSION['message_type'] = 'error';
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
+                    exit();
                 }
             }
             break;
@@ -160,11 +428,19 @@ if ($isLoggedIn) {
         $vault = new Vault();
         $vaultItems = $vault->getUserItems($_SESSION['user_id']);
         $vaultStats = $vault->getVaultStats($_SESSION['user_id']);
-        
-        // Load send data
+          // Load send data
         $sendManager = new SendManager();
         $userSends = $sendManager->getUserSends($_SESSION['user_id']);
         $sendStats = $sendManager->getSendStats($_SESSION['user_id']);
+        
+        // Ensure sendStats has all required keys
+        $sendStats = array_merge([
+            'total_sends' => 0,
+            'active_sends' => 0,
+            'expired_sends' => 0,
+            'exhausted_sends' => 0,
+            'total_views' => 0
+        ], $sendStats);
     } catch (Exception $e) {
         $error = 'Failed to load data: ' . $e->getMessage();
     }
@@ -540,6 +816,17 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             background: linear-gradient(135deg, #b91c1c, var(--danger));
         }
 
+        .btn-info {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            color: var(--white);
+        }
+
+        .btn-info:hover {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
         .btn-sm {
             padding: 0.5rem 0.875rem;
             font-size: 0.75rem;
@@ -634,18 +921,17 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
             text-align: center;
-        }
-
-        .stat-number {
+        }        .stat-number {
             font-size: 2rem;
             font-weight: 700;
-            color: var(--primary);
+            color: white;
             margin-bottom: 0.5rem;
         }
 
         .stat-label {
-            color: var(--gray);
+            color: white;
             font-size: 0.875rem;
+            opacity: 0.9;
         }
 
         /* Vault Items */
@@ -1343,9 +1629,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         .strength-fair { color: #d97706; }
         .strength-good { color: #16a34a; }
         .strength-strong { color: #059669; }
-        .strength-very-strong { color: #047857; }
-
-        /* History Section Styles */
+        .strength-very-strong { color: #047857; }        /* History Section Styles */
         .history-section {
             margin-top: 2rem;
             padding: 1.5rem 2rem;
@@ -1455,6 +1739,529 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             color: #64748b;
             font-style: italic;
             padding: 2rem;
+        }
+
+        /* Vault Items Selection Styles */
+        .vault-items-selection {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .vault-item-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .vault-item-checkbox:last-child {
+            border-bottom: none;
+        }
+
+        .vault-item-checkbox:hover {
+            background: #f8fafc;
+        }
+
+        .vault-item-checkbox input[type="checkbox"] {
+            margin-right: 1rem;
+            transform: scale(1.2);
+        }
+
+        .vault-item-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .vault-item-icon {
+            width: 40px;
+            height: 40px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+            color: var(--primary);
+        }
+
+        .vault-item-details {
+            flex: 1;
+        }
+
+        .item-name {
+            display: block;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .item-type {
+            display: inline-block;
+            background: #e5e7eb;
+            color: #64748b;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+
+        .item-url {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .no-items {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 2rem;
+        }
+
+        .error-message {
+            color: #dc2626;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        /* Items checklist styles for multiple selection */
+        .items-checklist {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            margin-top: 1rem;
+        }
+
+        .item-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .item-checkbox:last-child {
+            border-bottom: none;
+        }
+
+        .item-checkbox:hover {
+            background: #f8fafc;
+        }
+
+        .item-checkbox.selected {
+            background: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .item-checkbox input[type="checkbox"] {
+            margin-right: 1rem;
+            transform: scale(1.2);
+        }
+
+        .item-label {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .item-icon {
+            width: 40px;
+            height: 40px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+            color: var(--primary);
+        }
+
+        .item-name {
+            font-weight: 600;
+            color: var(--dark);
+            margin-right: 0.5rem;
+        }
+
+        .item-type {
+            color: #64748b;
+            font-size: 0.875rem;
+            font-style: italic;
+        }
+
+        .selection-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .selection-count {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-left: 1rem;
+        }        /* Password Modal Styles */
+        .password-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .password-modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .password-modal-content {
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .password-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .password-modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .close-modal:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .password-modal-body {
+            padding: 1.5rem;
+        }
+
+        .password-display {
+            margin-bottom: 1rem;
+        }
+
+        .password-display label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .password-value {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .password-value input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            background: #f9fafb;
+            font-weight: 600;
+        }
+
+        .btn-copy-password {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            font-size: 0.875rem;
+        }
+
+        .btn-copy-password:hover {
+            background: #2563eb;
+        }
+
+        .btn-copy-password:active {
+            transform: translateY(1px);
+        }
+
+        .btn-copy-password.copied {
+            background: #10b981 !important;
+        }
+
+        .password-value input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .password-warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            color: #92400e;
+            font-size: 0.875rem;
+        }
+
+        .password-warning i {
+            color: #f59e0b;
+            margin-top: 0.125rem;
+        }
+
+        .password-modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        /* Radio Group Styles */
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .radio-label:hover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.02);
+        }
+
+        .radio-label input[type="radio"] {
+            display: none;
+        }
+
+        .radio-custom {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #d1d5db;
+            border-radius: 50%;
+            background: white;
+            transition: all 0.3s ease;
+            position: relative;
+            flex-shrink: 0;
+            margin-right: 1rem;
+        }
+
+        .radio-label input[type="radio"]:checked + .radio-custom {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .radio-label input[type="radio"]:checked + .radio-custom::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .radio-content {
+            flex: 1;
+        }
+
+        .radio-content strong {
+            display: block;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }        .radio-content small {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        /* Enhanced File Upload Styles */
+        .file-upload-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            margin-bottom: 1rem;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #9ca3af;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text strong {
+            display: block;
+            color: var(--dark);
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-text p {
+            color: #64748b;
+            font-size: 0.875rem;
+            margin: 0;
+        }
+
+        .file-input {
+            display: none !important;
+        }
+
+        .file-preview {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .file-icon {
+            width: 48px;
+            height: 48px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            display: block;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .file-size, .file-type {
+            display: inline-block;
+            background: #e5e7eb;
+            color: #64748b;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+        }
+
+        .remove-file {
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .remove-file:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        .image-preview-container {
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .image-preview-container img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         /* Enhanced Generator Styles */
@@ -1724,10 +2531,24 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-weight: 600;
             transition: all 0.3s ease;
             background: white;
+        }        .number-input-enhanced:focus, .length-input-enhanced:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        .number-input-enhanced:focus, .length-input-enhanced:focus {
-            outline: none;
+        .custom-length-section {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .custom-length-input {
+            margin-top: 0.75rem;
+            max-width: 200px;
+        }
+
+        .custom-length-input:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
@@ -2085,13 +2906,26 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-size: 0.75rem;
             color: var(--gray);
             margin-top: 0.25rem;
-        }
-
-        .textarea-counter {
+        }        .textarea-counter {
             text-align: right;
             font-size: 0.75rem;
             color: var(--gray);
             margin-top: 0.25rem;
+        }
+        
+        .expiry-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .expiry-option {
+            transition: all 0.2s ease;
+        }
+        
+        .expiry-option select,
+        .expiry-option input {
+            width: 100%;
         }
 
         .email-preview {
@@ -2534,23 +3368,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         /* Send Management Styles */
         .sends-list {
             margin-top: 1rem;
-        }
-
-        .send-item {
-            background: white;
+        }        .send-item {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
             border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 1rem;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
             margin-bottom: 1rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .send-item:hover {
             border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
         }
 
         .send-info {
@@ -2564,10 +3398,19 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             gap: 0.5rem;
-        }
-
-        .send-title i {
+        }        .send-title i {
             color: var(--primary);
+        }
+        
+        .storage-badge {
+            background: linear-gradient(135deg, #059669, #065f46);
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            margin-left: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
 
         .send-meta {
@@ -2784,6 +3627,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             z-index: 1;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             letter-spacing: -0.05em;
+            color: white;
         }        .stat-label {
             font-size: 1.125rem;
             opacity: 0.95;
@@ -2793,6 +3637,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            color: white;
         }
 
         .stat-label i {
@@ -2986,6 +3831,167 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 opacity: 1;
             }
         }
+        /* Enhanced Quick Send Actions */
+        .send-quick-actions-container {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e5e7eb;
+        }
+
+        .send-quick-actions-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .send-quick-actions-header h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .send-quick-actions-header p {
+            color: var(--gray);
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .send-quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .send-action-card {
+            background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
+            border: 2px solid #e5e7eb;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .send-action-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+
+        .send-action-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .send-action-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-color: var(--primary);
+        }
+
+        .send-action-card.primary::before {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+
+        .send-action-card.secondary::before {
+            background: linear-gradient(135deg, #6b7280, #374151);
+        }        .send-action-card.success::before {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .send-action-card.active {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .send-action-card.active::before {
+            opacity: 1;
+        }
+
+        .action-icon {
+            flex-shrink: 0;
+            width: 3rem;
+            height: 3rem;
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: white;
+            background: linear-gradient(135deg, var(--primary), #1d4ed8);
+        }
+
+        .send-action-card.secondary .action-icon {
+            background: linear-gradient(135deg, #6b7280, #374151);
+        }
+
+        .send-action-card.success .action-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .action-content {
+            flex: 1;
+        }
+
+        .action-content h4 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--dark);
+            margin: 0 0 0.25rem 0;
+        }
+
+        .action-content p {
+            font-size: 0.875rem;
+            color: var(--gray);
+            margin: 0;
+            line-height: 1.4;
+        }
+
+        .action-arrow {
+            flex-shrink: 0;
+            color: var(--gray);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .send-action-card:hover .action-arrow {
+            color: var(--primary);
+            transform: translateX(4px);
+        }
+
+        @media (max-width: 768px) {
+            .send-quick-actions-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .send-action-card {
+                padding: 1.25rem;
+            }
+            
+            .action-icon {
+                width: 2.5rem;
+                height: 2.5rem;
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -3090,8 +4096,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 </div>
 
                 <!-- Content Area -->
-                <div class="content-area">
-                    <?php if ($error): ?>
+                <div class="content-area">                    <?php if ($error): ?>
                         <div class="alert alert-error">
                             <i class="fas fa-exclamation-circle"></i>
                             <?= htmlspecialchars($error) ?>
@@ -3102,6 +4107,30 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                         <div class="alert alert-success">
                             <i class="fas fa-check-circle"></i>
                             <?= htmlspecialchars($success) ?>
+                              <?php if ($sendSuccessLink): ?>
+                                <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+                                    <strong>Share this secure link:</strong><br>
+                                    <div style="display: flex; align-items: center; margin-top: 8px;">
+                                        <input type="text" 
+                                               value="<?php 
+                                                   // Check if this is a credential delivery
+                                                   if (isset($_GET['credential_success'])) {
+                                                       echo 'http://localhost/SecureIt/backend/credential_access.php?token=' . htmlspecialchars($sendSuccessLink);
+                                                   } else {
+                                                       echo 'http://localhost/SecureIt/backend/access_send.php?link=' . htmlspecialchars($sendSuccessLink);
+                                                   }
+                                               ?>" 
+                                               readonly 
+                                               id="sendLink"
+                                               style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: monospace; font-size: 12px;">
+                                        <button onclick="copyToClipboard('sendLink')" 
+                                                style="margin-left: 10px; padding: 8px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <i class="fas fa-copy"></i> Copy
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+  
                         </div>
                     <?php endif; ?>                    <?php if ($currentSection === 'dashboard'): ?>
                         <!-- Dashboard Content -->
@@ -3375,8 +4404,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </button>
                                         <button class="action-btn-enhanced secondary" onclick="copyGeneratedValue()" title="Copy to clipboard" id="copyBtn">
                                             <i class="fas fa-copy"></i>
-                                        </button>
-                                        <button class="action-btn-enhanced tertiary" onclick="addToHistory()" title="Save to history" id="saveBtn">
+                                        </button>                                        <button class="action-btn-enhanced tertiary" onclick="addToHistory()" title="Save to generator history" id="saveBtn">
                                             <i class="fas fa-bookmark"></i>
                                         </button>
                                     </div>
@@ -3420,18 +4448,27 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                 <div class="length-display">
                                                     <span id="lengthValue">14</span> characters
                                                 </div>
-                                            </div>
-                                            <div class="slider-container">
-                                                <input type="range" id="passwordLengthSlider" min="5" max="128" value="14" class="length-slider" onchange="updateLengthDisplay(); autoGenerate()">
+                                            </div>                                            <div class="slider-container">
+                                                <input type="range" id="passwordLengthSlider" min="5" max="256" value="14" class="length-slider" onchange="updateLengthDisplay(); autoGenerate()">
                                                 <div class="slider-labels">
                                                     <span>5</span>
                                                     <span>Weak</span>
                                                     <span>Good</span>
                                                     <span>Strong</span>
-                                                    <span>128</span>
+                                                    <span>256+</span>
                                                 </div>
                                             </div>
-                                            <input type="number" id="passwordLength" min="5" max="128" value="14" class="length-input-enhanced" onchange="syncSlider(); autoGenerate()" style="display: none;">
+                                            <div class="custom-length-section">
+                                                <label class="checkbox-label-enhanced">
+                                                    <input type="checkbox" id="useCustomLength" onchange="toggleCustomLength()">
+                                                    <span class="checkbox-custom"></span>
+                                                    <div class="checkbox-content">
+                                                        <span class="checkbox-title">Custom Length</span>
+                                                        <span class="checkbox-example">Enter any length</span>
+                                                    </div>
+                                                </label>
+                                                <input type="number" id="passwordLength" min="5" value="14" class="length-input-enhanced custom-length-input" onchange="syncCustomLength(); autoGenerate()" style="display: none;" placeholder="Enter custom length">
+                                            </div>
                                         </div>
 
                                         <div class="option-group-enhanced">
@@ -3569,147 +4606,106 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-
-                                <!-- Generator History -->
+                                </div>                                <!-- Generator History -->
                                 <div class="history-section">
-                                    <button class="history-toggle" onclick="toggleHistory()">
-                                        Generator history
-                                    </button>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <button class="history-toggle" onclick="toggleHistory()">
+                                            <i class="fas fa-history"></i>
+                                            Generator History
+                                        </button>
+                                        <button class="btn btn-secondary btn-sm" onclick="clearGeneratorHistory()" style="display: none;" id="clearHistoryBtn">
+                                            <i class="fas fa-trash"></i> Clear History
+                                        </button>
+                                    </div>
                                     
                                     <div id="historyContent" class="history-content" style="display: none;">
-                                        <p class="no-history">No history available</p>
-                                    </div>                                </div>
-                            </div>
-                        </div>
-
-                    <?php elseif ($currentSection === 'send'): ?>
-                        <!-- Send Section -->
-                        <div class="send-container">
-                            <!-- Send Tabs -->
-                            <div class="send-tabs">
-                                <button class="send-tab-button active" data-tab="email" onclick="switchSendTab('email')">
-                                    <i class="fas fa-at"></i> Anonymous Email
-                                </button>
-                                <button class="send-tab-button" data-tab="secure" onclick="switchSendTab('secure')">
-                                    <i class="fas fa-shield-check"></i> Secure Send
-                                </button>
-                                <button class="send-tab-button" data-tab="manage" onclick="switchSendTab('manage')">
-                                    <i class="fas fa-tasks"></i> Manage Sends
-                                </button>
-                            </div>
-
-                            <!-- Anonymous Email Tab -->
-                            <div id="emailTab" class="send-tab-content active">
-                                <div class="card enhanced-card">
-                                    <div class="card-header gradient-header">
-                                        <h2 class="card-title">
-                                            <i class="fas fa-user-secret"></i> Send Anonymous Email
-                                        </h2>
-                                        <p class="card-description">Send emails anonymously with professional templates. Your identity remains completely protected.</p>
-                                        <div class="feature-badges">
-                                            <span class="badge badge-success"><i class="fas fa-user-secret"></i> Anonymous</span>
-                                            <span class="badge badge-info"><i class="fas fa-envelope-open-text"></i> Professional Templates</span>
-                                            <span class="badge badge-warning"><i class="fas fa-bolt"></i> Instant Delivery</span>
-                                        </div>
-                                    </div>
-                                    <div class="card-body">
-                                        <form method="POST" id="anonymousEmailForm" class="enhanced-form">
-                                            <input type="hidden" name="action" value="send_anonymous_email">
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-mail-bulk"></i> Email Configuration</h4>
-                                                <div class="form-row">
-                                                    <div class="form-group">
-                                                        <label for="from_email" class="enhanced-label">
-                                                            <i class="fas fa-user-secret"></i> Anonymous Sender Email
-                                                        </label>
-                                                        <input type="email" id="from_email" name="from_email" class="enhanced-input" 
-                                                               placeholder="Enter the email address you want to appear as sender" required>
-                                                        <small class="form-help">This email will appear as the sender to the recipient</small>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="to_email" class="enhanced-label">
-                                                            <i class="fas fa-inbox"></i> Recipient Email
-                                                        </label>
-                                                        <input type="email" id="to_email" name="to_email" class="enhanced-input" 
-                                                               placeholder="Enter recipient's email address" required>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-edit"></i> Message Content</h4>
-                                                <div class="form-group">
-                                                    <label for="subject" class="enhanced-label">
-                                                        <i class="fas fa-tag"></i> Subject Line
-                                                    </label>
-                                                    <input type="text" id="subject" name="subject" class="enhanced-input" 
-                                                           placeholder="Enter email subject" required>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="sender_note" class="enhanced-label">
-                                                        <i class="fas fa-sticky-note"></i> Sender Note (Optional)
-                                                    </label>
-                                                    <input type="text" id="sender_note" name="sender_note" class="enhanced-input" 
-                                                           placeholder="Optional note about the sender (e.g., 'From a concerned friend')">
-                                                    <small class="form-help">This will appear in the email template for context</small>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="message" class="enhanced-label">
-                                                        <i class="fas fa-comment-alt"></i> Your Message
-                                                    </label>
-                                                    <textarea id="message" name="message" class="enhanced-input enhanced-textarea" rows="8" 
-                                                              placeholder="Enter your message here..." required></textarea>
-                                                    <div class="textarea-counter">
-                                                        <span id="messageCounter">0</span> characters
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-eye"></i> Email Preview</h4>
-                                                <div class="email-preview">
-                                                    <div class="preview-container">
-                                                        <div class="preview-header">
-                                                            <div class="preview-title">📧 Anonymous Message</div>
-                                                            <div class="preview-badge">SecureIt Delivery</div>
-                                                        </div>
-                                                        <div class="preview-content">
-                                                            <div class="preview-note">
-                                                                <i class="fas fa-shield-alt"></i> 
-                                                                <strong>Note:</strong> This is an anonymous message sent through SecureIt's secure system.
-                                                            </div>
-                                                            <div class="preview-sender-note" id="senderNotePreview" style="display: none;"></div>
-                                                            <div class="preview-message" id="messagePreview">
-                                                                <em>Your message will appear here as you type...</em>
-                                                            </div>
-                                                            <div class="preview-footer">
-                                                                <small>This message was sent anonymously through SecureIt's secure messaging system.</small>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="form-actions">
-                                                <button type="button" class="btn btn-secondary" onclick="clearEmailForm()">
-                                                    <i class="fas fa-eraser"></i> Clear Form
-                                                </button>
-                                                <button type="submit" class="btn btn-primary btn-enhanced">
-                                                    <i class="fas fa-paper-plane"></i> Send Anonymous Email
-                                                    <span class="btn-animation"></span>
-                                                </button>
-                                            </div>
-                                        </form>
+                                        <p class="no-history">No history available. Generate and save some values to see them here.</p>
                                     </div>
                                 </div>
                             </div>
-
+                        </div>                    <?php elseif ($currentSection === 'send'): ?>
+                        <!-- Send Section with Dashboard-style Design -->
+                        
+                        <!-- Send Statistics -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['total_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-paper-plane"></i>
+                                    Total Sends
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['active_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-check-circle"></i>
+                                    Active
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['total_views']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-eye"></i>
+                                    Total Views
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['expired_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-clock"></i>
+                                    Expired
+                                </div>
+                            </div>
+                        </div>                        <!-- Quick Actions -->
+                        <div class="send-quick-actions-container">
+                            <div class="send-quick-actions-header">
+                                <h3><i class="fas fa-rocket"></i> Quick Send Actions</h3>
+                                <p>Choose an action to get started with secure sending</p>
+                            </div>
+                            <div class="send-quick-actions-grid">
+                                <button class="send-action-card primary" onclick="switchSendTab('secure')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-shield-check"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Create Secure Send</h4>
+                                        <p>Share encrypted files or text with advanced security controls</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
+                                
+                                <button class="send-action-card secondary" onclick="switchSendTab('credential')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-key"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Share Credentials</h4>
+                                        <p>Temporarily share vault items with secure access links</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
+                                
+                                <button class="send-action-card success" onclick="switchSendTab('manage')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-tasks"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Manage Sends</h4>
+                                        <p>Monitor and control all your active secure sends</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>                        <!-- Send Container -->
+                        <div class="send-container">
                             <!-- Secure Send Tab -->
-                            <div id="secureTab" class="send-tab-content">
+                            <div id="secureTab" class="send-tab-content active">
                                 <div class="card enhanced-card">
                                     <div class="card-header gradient-header">
                                         <h2 class="card-title">
@@ -3769,32 +4765,81 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                             <span id="textCounter">0</span> characters
                                                         </div>
                                                     </div>
-                                                </div>
-                                                  <div id="fileContent" class="content-section" style="display: none;">
+                                                </div>                                <div id="fileContent" class="content-section" style="display: none;">
                                                     <div class="form-group">
                                                         <label for="send_file" class="enhanced-label">
-                                                            <i class="fas fa-upload"></i> Choose File
+                                                            <i class="fas fa-upload"></i> Choose File or Image
                                                         </label>
-                                                        <input type="file" id="send_file" name="send_file" class="enhanced-input">
-                                                        <small class="form-help">Maximum file size: 10MB. Supported formats: PDF, DOC, TXT, ZIP, etc.</small>
+                                                        <div class="file-upload-area" onclick="document.getElementById('send_file').click()">
+                                                            <div class="upload-icon">
+                                                                <i class="fas fa-cloud-upload-alt"></i>
+                                                            </div>
+                                                            <div class="upload-text">
+                                                                <strong>Click to upload or drag & drop</strong>
+                                                                <p>Support for images (JPG, PNG, GIF), documents (PDF, DOC, TXT), archives (ZIP, RAR) and more</p>
+                                                            </div>
+                                                        </div>
+                                                        <input type="file" id="send_file" name="send_file" class="enhanced-input file-input" 
+                                                               accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar,.csv,.xlsx,.ppt,.pptx" 
+                                                               onchange="handleFileSelection(this)">
+                                                        <div id="file-preview" class="file-preview" style="display: none;">
+                                                            <div class="file-info">
+                                                                <div class="file-icon">
+                                                                    <i class="fas fa-file"></i>
+                                                                </div>
+                                                                <div class="file-details">
+                                                                    <span class="file-name"></span>
+                                                                    <span class="file-size"></span>
+                                                                    <span class="file-type"></span>
+                                                                </div>
+                                                                <button type="button" class="remove-file" onclick="removeFile()">
+                                                                    <i class="fas fa-times"></i>
+                                                                </button>
+                                                            </div>
+                                                            <div id="image-preview" class="image-preview-container" style="display: none;">
+                                                                <img id="preview-image" src="" alt="Preview" />
+                                                            </div>
+                                                        </div>
+                                                        <small class="form-help">Maximum file size: 25MB. Images will be displayed as previews to recipients.</small>
                                                     </div>
                                                 </div>
                                             </div>
                                             
                                             <div class="form-section">
                                                 <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Options</h4>
-                                                
-                                                <div class="form-group">
-                                                    <label for="deletion_days" class="enhanced-label">
+                                                  <div class="form-group">
+                                                    <label for="expiry_type" class="enhanced-label">
                                                         <i class="fas fa-calendar-times"></i> Auto-Delete After
                                                     </label>
-                                                    <select id="deletion_days" name="deletion_days" class="enhanced-input">
-                                                        <option value="1">1 Day</option>
-                                                        <option value="3">3 Days</option>
-                                                        <option value="7" selected>7 Days</option>
-                                                        <option value="14">14 Days</option>
-                                                        <option value="30">30 Days</option>
-                                                    </select>
+                                                    <div class="expiry-controls">
+                                                        <select id="expiry_type" name="expiry_type" class="enhanced-input" onchange="toggleExpiryType()">
+                                                            <option value="preset">Quick Options</option>
+                                                            <option value="custom">Custom Date & Time</option>
+                                                        </select>
+                                                        
+                                                        <!-- Quick preset options -->
+                                                        <div id="preset_options" class="expiry-option">
+                                                            <select id="deletion_preset" name="deletion_preset" class="enhanced-input">
+                                                                <option value="30">30 Minutes</option>
+                                                                <option value="60">1 Hour</option>
+                                                                <option value="180">3 Hours</option>
+                                                                <option value="360">6 Hours</option>
+                                                                <option value="720">12 Hours</option>
+                                                                <option value="1440">1 Day</option>
+                                                                <option value="4320">3 Days</option>
+                                                                <option value="10080" selected>7 Days</option>
+                                                                <option value="20160">14 Days</option>
+                                                                <option value="43200">30 Days</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <!-- Custom date/time picker -->
+                                                        <div id="custom_options" class="expiry-option" style="display: none;">
+                                                            <input type="datetime-local" id="custom_expiry" name="custom_expiry" class="enhanced-input"
+                                                                   min="<?php echo date('Y-m-d\TH:i', strtotime('+30 minutes')); ?>"
+                                                                   value="<?php echo date('Y-m-d\TH:i', strtotime('+7 days')); ?>">
+                                                        </div>
+                                                    </div>
                                                     <small class="form-help">The send will be permanently deleted after this time</small>
                                                 </div>
                                                 
@@ -3819,16 +4864,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                     <input type="number" id="max_views" name="max_views" class="enhanced-input" 
                                                            placeholder="e.g., 5" min="1" max="100">
                                                     <small class="form-help">Limit how many times this send can be viewed before it's deleted</small>
+                                                </div>                                                <div class="form-group">
+                                                    <div class="checkbox-group">
+                                                        <input type="checkbox" id="anonymous" name="anonymous" class="enhanced-checkbox">
+                                                        <label for="anonymous" class="checkbox-label">
+                                                            <i class="fas fa-user-secret"></i> Send anonymously (hide sender name)                                                        </label>
+                                                    </div>
+                                                    <small class="form-help">When enabled, recipients won't see who sent the message</small>
                                                 </div>
                                                 
                                                 <div class="form-group">
                                                     <div class="checkbox-group">
-                                                        <input type="checkbox" id="hide_email" name="hide_email" class="enhanced-checkbox">
-                                                        <label for="hide_email" class="checkbox-label">
-                                                            <i class="fas fa-user-secret"></i> Hide my email address from recipients
+                                                        <input type="checkbox" id="allow_download" name="allow_download" class="enhanced-checkbox" checked>
+                                                        <label for="allow_download" class="checkbox-label">
+                                                            <i class="fas fa-download"></i> Allow file downloads
                                                         </label>
                                                     </div>
-                                                    <small class="form-help">When enabled, recipients won't see who sent the message</small>
+                                                    <small class="form-help">Enable recipients to download shared files and images</small>
                                                 </div>
                                             </div>
                                             
@@ -3842,11 +4894,269 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                 </button>
                                             </div>
                                         </form>
-                                    </div>
-                                </div>
+                                    </div>                                </div>
                             </div>
 
-                            <!-- Manage Sends Tab -->
+                            <!-- Credential Delivery Tab -->
+                            <div id="credentialTab" class="send-tab-content">
+                                <div class="card enhanced-card">
+                                    <div class="card-header gradient-header">
+                                        <h2 class="card-title">
+                                            <i class="fas fa-clipboard-list"></i> Credential Delivery
+                                        </h2>
+                                        <p class="card-description">Share vault items (logins, cards, notes) securely with temporary access links. Perfect for team or family account sharing.</p>
+                                        <div class="feature-badges">
+                                            <span class="badge badge-success"><i class="fas fa-vault"></i> From Vault</span>
+                                            <span class="badge badge-info"><i class="fas fa-clock"></i> Temporary Access</span>
+                                            <span class="badge badge-warning"><i class="fas fa-ban"></i> Revokable</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">                                        <form method="POST" id="credentialDeliveryForm" class="enhanced-form">
+                                            <input type="hidden" name="action" value="create_credential_delivery">
+                                              <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Items</h4>
+                                                <div class="form-group">
+                                                    <label class="enhanced-label">
+                                                        <i class="fas fa-clipboard-check"></i> Selection Mode
+                                                    </label>
+                                                    <div class="selection-mode-tabs">
+                                                        <input type="radio" id="single_item" name="selection_mode" value="single" checked>
+                                                        <label for="single_item" class="mode-tab">
+                                                            <i class="fas fa-file"></i> Single Item
+                                                        </label>
+                                                        <input type="radio" id="multiple_items" name="selection_mode" value="multiple">
+                                                        <label for="multiple_items" class="mode-tab">
+                                                            <i class="fas fa-list"></i> Multiple Items
+                                                        </label>
+                                                        <input type="radio" id="all_items" name="selection_mode" value="all">
+                                                        <label for="all_items" class="mode-tab">
+                                                            <i class="fas fa-th"></i> All Items
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Single Item Selection -->
+                                                <div id="single_selection" class="selection-section">
+                                                    <div class="form-group">
+                                                        <label for="vault_item_id" class="enhanced-label">
+                                                            <i class="fas fa-search"></i> Choose Item to Share
+                                                        </label>
+                                                        <select id="vault_item_id" name="vault_item_id" class="enhanced-input">
+                                                            <option value="">Select a vault item...</option>
+                                                            <?php if ($isLoggedIn): ?>
+                                                                <?php
+                                                                try {
+                                                                    $vault = new Vault();
+                                                                    $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                    foreach ($allItems as $item):
+                                                                        $itemIcon = '';
+                                                                        switch ($item['item_type']) {
+                                                                            case 'login': $itemIcon = '🔐'; break;
+                                                                            case 'card': $itemIcon = '💳'; break;
+                                                                            case 'identity': $itemIcon = '🆔'; break;
+                                                                            case 'note': $itemIcon = '📝'; break;
+                                                                            default: $itemIcon = '🔑';
+                                                                        }
+                                                                ?>
+                                                                    <option value="<?= $item['id'] ?>" data-type="<?= $item['item_type'] ?>">
+                                                                        <?= $itemIcon ?> <?= htmlspecialchars($item['item_name']) ?> (<?= ucfirst($item['item_type']) ?>)
+                                                                    </option>
+                                                                <?php endforeach; ?>
+                                                                <?php } catch (Exception $e) { ?>
+                                                                    <option value="">Error loading vault items</option>
+                                                                <?php } ?>
+                                                            <?php endif; ?>
+                                                        </select>
+                                                        <small class="form-help">Select which vault item you want to share temporarily</small>
+                                                    </div>
+                                                </div>                                                <!-- Multiple Items Selection -->
+                                                <div id="multiple_selection" class="selection-section" style="display: none;">
+                                                    <div class="form-group">
+                                                        <label class="enhanced-label">
+                                                            <i class="fas fa-check-square"></i> Choose Items to Share
+                                                        </label>
+                                                        
+                                                        <div class="selection-controls">
+                                                            <button type="button" onclick="selectAllItems()" class="btn-small btn-secondary">
+                                                                <i class="fas fa-check-double"></i> Select All
+                                                            </button>
+                                                            <button type="button" onclick="clearAllItems()" class="btn-small btn-secondary">
+                                                                <i class="fas fa-times"></i> Clear All
+                                                            </button>
+                                                        </div>
+                                                        
+                                                        <div class="items-checklist">
+                                                            <?php if ($isLoggedIn): ?>
+                                                                <?php
+                                                                try {
+                                                                    $vault = new Vault();
+                                                                    $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                    foreach ($allItems as $item):
+                                                                        $itemIcon = '';
+                                                                        switch ($item['item_type']) {
+                                                                            case 'login': $itemIcon = '🔐'; break;
+                                                                            case 'card': $itemIcon = '💳'; break;
+                                                                            case 'identity': $itemIcon = '🆔'; break;
+                                                                            case 'note': $itemIcon = '📝'; break;
+                                                                            default: $itemIcon = '🔑';
+                                                                        }
+                                                                ?>
+                                                                    <div class="item-checkbox">
+                                                                        <input type="checkbox" id="item_<?= $item['id'] ?>" name="vault_items[]" value="<?= $item['id'] ?>" class="enhanced-checkbox">
+                                                                        <label for="item_<?= $item['id'] ?>" class="item-label">
+                                                                            <span class="item-icon"><?= $itemIcon ?></span>
+                                                                            <span class="item-name"><?= htmlspecialchars($item['item_name']) ?></span>
+                                                                            <span class="item-type">(<?= ucfirst($item['item_type']) ?>)</span>
+                                                                        </label>
+                                                                    </div>
+                                                                <?php endforeach; ?>
+                                                                <?php } catch (Exception $e) { ?>
+                                                                    <div class="error-message">Error loading vault items</div>
+                                                                <?php } ?>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <small class="form-help">Select multiple vault items to share in one delivery. You can select as many items as you want.</small>
+                                                    </div>
+                                                </div><!-- All Items Selection -->
+                                                <div id="all_selection" class="selection-section" style="display: none;">
+                                                    <div class="form-group">
+                                                        <div class="info-box">
+                                                            <i class="fas fa-info-circle"></i>
+                                                            <div>
+                                                                <strong>Share All Vault Items</strong>
+                                                                <p>This will share all items in your vault. Use with caution and only with trusted individuals.</p>
+                                                                <?php if ($isLoggedIn): ?>
+                                                                    <?php
+                                                                    try {
+                                                                        $vault = new Vault();
+                                                                        $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                        $itemCount = count($allItems);
+                                                                        echo "<p><strong>Total items to share: {$itemCount}</strong></p>";
+                                                                    } catch (Exception $e) {
+                                                                        echo "<p><em>Error loading vault items</em></p>";
+                                                                    }
+                                                                    ?>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <?php if ($isLoggedIn): ?>
+                                                            <div class="all-items-list">
+                                                                <h5><i class="fas fa-list"></i> Items that will be shared:</h5>
+                                                                <div class="items-preview">
+                                                                    <?php
+                                                                    try {
+                                                                        $vault = new Vault();
+                                                                        $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                        foreach ($allItems as $item):
+                                                                            $itemIcon = '';
+                                                                            switch ($item['item_type']) {
+                                                                                case 'login': $itemIcon = '🔐'; break;
+                                                                                case 'card': $itemIcon = '💳'; break;
+                                                                                case 'identity': $itemIcon = '🆔'; break;
+                                                                                case 'note': $itemIcon = '📝'; break;
+                                                                                default: $itemIcon = '🔑';
+                                                                            }
+                                                                    ?>
+                                                                        <div class="preview-item">
+                                                                            <span class="preview-icon"><?= $itemIcon ?></span>
+                                                                            <span class="preview-name"><?= htmlspecialchars($item['item_name']) ?></span>
+                                                                            <span class="preview-type">(<?= ucfirst($item['item_type']) ?>)</span>
+                                                                        </div>
+                                                                    <?php endforeach; ?>
+                                                                    <?php } catch (Exception $e) { ?>
+                                                                        <div class="error-message">Error loading vault items</div>
+                                                                    <?php } ?>
+                                                                </div>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-clock"></i> Access Settings</h4>
+                                                <div class="form-group">
+                                                    <label for="credential_expiry" class="enhanced-label">
+                                                        <i class="fas fa-hourglass-half"></i> Access Duration
+                                                    </label>                                                    <select id="credential_expiry" name="expiry_hours" class="enhanced-input" required>
+                                                        <option value="1">1 Hour</option>
+                                                        <option value="6">6 Hours</option>
+                                                        <option value="12">12 Hours</option>
+                                                        <option value="24" selected>24 Hours (1 Day)</option>
+                                                        <option value="72">72 Hours (3 Days)</option>
+                                                        <option value="168">1 Week</option>
+                                                        <option value="720">1 Month (30 Days)</option>
+                                                        <option value="2160">3 Months (90 Days)</option>
+                                                        <option value="4320">6 Months (180 Days)</option>
+                                                        <option value="8760">1 Year (365 Days)</option>
+                                                        <option value="17520">2 Years (730 Days)</option>
+                                                        <option value="43800">5 Years</option>
+                                                        <option value="87600">10 Years</option>
+                                                        <option value="0">Forever (No Expiration)</option>
+                                                    </select>
+                                                    <small class="form-help">How long the recipient can access this credential</small>
+                                                </div>
+                                                
+                                                <div class="form-group">
+                                                    <label for="credential_max_views" class="enhanced-label">
+                                                        <i class="fas fa-eye"></i> Maximum Views (Optional)
+                                                    </label>
+                                                    <input type="number" id="credential_max_views" name="max_views" class="enhanced-input" 
+                                                           placeholder="e.g., 3" min="1" max="50">
+                                                    <small class="form-help">Limit how many times this credential can be viewed</small>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-shield-alt"></i> Security Options</h4>
+                                                <div class="form-group">
+                                                    <div class="checkbox-group">
+                                                        <input type="checkbox" id="require_password_credential" name="require_password" class="enhanced-checkbox">
+                                                        <label for="require_password_credential" class="checkbox-label">
+                                                            <i class="fas fa-lock"></i> Require password to access
+                                                        </label>
+                                                    </div>
+                                                    
+                                                    <div id="credential_password_section" style="display: none; margin-top: 1rem;">
+                                                        <label for="credential_access_password" class="enhanced-label">
+                                                            <i class="fas fa-key"></i> Access Password
+                                                        </label>
+                                                        <div class="password-input-group">
+                                                            <input type="password" id="credential_access_password" name="access_password" class="enhanced-input password-input" 
+                                                                   placeholder="Enter access password">
+                                                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('credential_access_password')">
+                                                                <i class="fas fa-eye" id="credential_access_password_icon"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-comment-alt"></i> Optional Message</h4>
+                                                <div class="form-group">
+                                                    <label for="credential_message" class="enhanced-label">
+                                                        <i class="fas fa-envelope"></i> Message to Recipient
+                                                    </label>
+                                                    <textarea id="credential_message" name="message" class="enhanced-input enhanced-textarea" rows="4" 
+                                                              placeholder="Optional message explaining why you're sharing this credential..."></textarea>
+                                                    <div class="textarea-counter">
+                                                        <span id="credentialMessageCounter">0</span> characters
+                                                    </div>
+                                                </div>
+                                            </div>
+                                              <div class="form-actions">
+                                                <button type="button" class="btn btn-secondary" onclick="clearCredentialForm()">
+                                                    <i class="fas fa-eraser"></i> Clear Form
+                                                </button>                                                <button type="submit" class="btn btn-primary btn-enhanced">
+                                                    <i class="fas fa-share-alt"></i> Create Credential Delivery
+                                                    <span class="btn-animation"></span>
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>                            <!-- Manage Sends Tab -->
                             <div id="manageTab" class="send-tab-content">
                                 <div class="card enhanced-card">
                                     <div class="card-header gradient-header">
@@ -3891,33 +5201,50 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                             </div>
                                             
                                             <!-- Sends List -->
-                                            <div class="sends-list">
-                                                <?php foreach ($userSends as $send): ?>
-                                                    <div class="send-item">
+                                            <div class="sends-list">                                                <?php foreach ($userSends as $send): ?>                                                    <div class="send-item">
                                                         <div class="send-info">
                                                             <div class="send-title">
-                                                                <i class="fas fa-<?php echo $send['send_type'] === 'file' ? 'file' : 'text'; ?>"></i>
+                                                                <i class="fas fa-<?php echo $send['type'] === 'file' ? ($send['is_image'] ? 'image' : 'file') : ($send['type'] === 'credential' ? 'key' : 'text'); ?>"></i>
                                                                 <?php echo htmlspecialchars($send['name']); ?>
+                                                                <?php if ($send['type'] === 'file' && $send['is_image']): ?>
+                                                                    <span class="storage-badge">SECURE</span>
+                                                                <?php endif; ?>
                                                             </div>
                                                             <div class="send-meta">
-                                                                <span class="badge badge-<?php echo $send['send_type'] === 'file' ? 'info' : 'secondary'; ?>">
-                                                                    <?php echo ucfirst($send['send_type']); ?>
+                                                                <span class="badge badge-<?php echo $send['type'] === 'file' ? 'info' : ($send['type'] === 'credential' ? 'warning' : 'secondary'); ?>">
+                                                                    <?php echo ucfirst($send['type']); ?>
+                                                                    <?php if ($send['type'] === 'file'): ?>
+                                                                        (<?php echo $send['is_image'] ? 'Image' : 'File'; ?>)
+                                                                    <?php endif; ?>
                                                                 </span>
                                                                 <span class="send-date">
                                                                     Created: <?php echo date('M j, Y', strtotime($send['created_at'])); ?>
                                                                 </span>
                                                                 <span class="send-expire">
-                                                                    Expires: <?php echo date('M j, Y', strtotime($send['deletion_date'])); ?>
+                                                                    Expires: <?php echo date('M j, Y', strtotime($send['expires_at'])); ?>
+                                                                </span>                                                                <span class="send-views">
+                                                                    Views: <?php echo $send['view_count']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?>
                                                                 </span>
-                                                                <span class="send-views">
-                                                                    Views: <?php echo $send['current_views']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?>
-                                                                </span>
+                                                                <?php if ($send['has_password']): ?>
+                                                                    <span class="send-protection">
+                                                                        <i class="fas fa-lock"></i> Password Protected
+                                                                    </span>
+                                                                <?php endif; ?>
+                                                                <?php if ($send['type'] === 'file' && $send['file_size']): ?>
+                                                                    <span class="send-size">
+                                                                        Size: <?php echo number_format($send['file_size']); ?> bytes
+                                                                    </span>
+                                                                <?php endif; ?>
                                                             </div>
-                                                        </div>
-                                                        <div class="send-actions">
-                                                            <button class="btn btn-sm btn-secondary" onclick="copyAccessLink('<?php echo $send['access_link']; ?>')">
+                                                        </div>                                                        <div class="send-actions">
+                                                            <button class="btn btn-sm btn-secondary" onclick="copyAccessLink('<?php echo $send['access_token']; ?>')">
                                                                 <i class="fas fa-copy"></i> Copy Link
                                                             </button>
+                                                            <?php if ($send['has_password']): ?>
+                                                                <button class="btn btn-sm btn-info" onclick="viewSendPassword('<?php echo $send['id']; ?>')" id="viewPasswordBtn_<?php echo $send['id']; ?>">
+                                                                    <i class="fas fa-eye"></i> View Password
+                                                                </button>
+                                                            <?php endif; ?>
                                                             <form method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this send?')">
                                                                 <input type="hidden" name="action" value="delete_send">
                                                                 <input type="hidden" name="send_id" value="<?php echo $send['id']; ?>">
@@ -3934,49 +5261,31 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                 </div>
                             </div>
                         </div>                    <?php elseif ($currentSection === 'security'): ?>
-                        <!-- Enhanced Security Center -->
+                        <!-- Security Center -->
                         <div class="card enhanced-card">
                             <div class="card-header gradient-header">
                                 <h2 class="card-title">Security Center</h2>
-                                <p class="card-description">Monitor your security posture and access powerful security tools and APIs.</p>
+                                <p class="card-description">Access powerful security tools and APIs.</p>
                             </div>
                             <div class="card-body">
-                                <div class="stats-grid">
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--success);">85</div>
-                                        <div class="stat-label">Security Score</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--warning);">3</div>
-                                        <div class="stat-label">Weak Passwords</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--danger);">2</div>
-                                        <div class="stat-label">Reused Passwords</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--info);">0</div>
-                                        <div class="stat-label">Compromised</div>
-                                    </div>
-                                </div>
-                                  <!-- Security Tools Section -->
+                                <!-- Security Tools Section -->
                                 <div style="margin-top: 2rem;">
                                     <h3 style="margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 600;">Security Tools & APIs</h3>
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; max-width: 800px; margin: 0 auto;">
                                         <!-- Brute Force Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
-                                                <h4 style="margin: 0; color: #991b1b; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-hammer"></i> Brute Force Analyzer
+                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: none; box-shadow: 0 10px 25px rgba(239, 68, 68, 0.15);">
+                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2); padding: 1.5rem;">
+                                                <h4 style="margin: 0; color: #991b1b; display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem;">
+                                                    <i class="fas fa-hammer" style="font-size: 1.25rem;"></i> Brute Force Analyzer
                                                 </h4>
                                             </div>
-                                            <div class="card-body">
-                                                <p style="color: #991b1b; margin-bottom: 1rem;">Test password strength against brute force attacks and get security recommendations.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-danger" onclick="openBruteForceAnalyzer()" style="flex: 1;">
-                                                        <i class="fas fa-shield-virus"></i> Analyze
+                                            <div class="card-body" style="padding: 1.5rem;">
+                                                <p style="color: #991b1b; margin-bottom: 1.5rem; line-height: 1.5;">Test password strength against brute force attacks and get detailed security recommendations.</p>
+                                                <div style="display: flex; gap: 0.75rem;">
+                                                    <button class="btn btn-danger" onclick="openBruteForceAnalyzer()" style="flex: 1; padding: 0.875rem 1rem; font-weight: 600;">
+                                                        <i class="fas fa-shield-virus"></i> Analyze Password
                                                     </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewBruteForceAPI()" title="View API">
+                                                    <button class="btn btn-secondary btn-sm" onclick="viewBruteForceAPI()" title="View API Documentation" style="padding: 0.875rem;">
                                                         <i class="fas fa-code"></i>
                                                     </button>
                                                 </div>
@@ -3984,116 +5293,22 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- VirusTotal Integration -->
-                                        <div class="card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(59, 130, 246, 0.2);">
-                                                <h4 style="margin: 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-virus-slash"></i> VirusTotal API
+                                        <div class="card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border: none; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.15);">
+                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding: 1.5rem;">
+                                                <h4 style="margin: 0; color: #1e40af; display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem;">
+                                                    <i class="fas fa-virus-slash" style="font-size: 1.25rem;"></i> VirusTotal API
                                                 </h4>
                                             </div>
-                                            <div class="card-body">
-                                                <p style="color: #1e40af; margin-bottom: 1rem;">Scan files and URLs for malware using VirusTotal's comprehensive database.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-info" onclick="openVirusTotalScanner()" style="flex: 1;">
-                                                        <i class="fas fa-scanner"></i> Scan
+                                            <div class="card-body" style="padding: 1.5rem;">
+                                                <p style="color: #1e40af; margin-bottom: 1.5rem; line-height: 1.5;">Scan files and URLs for malware using VirusTotal's comprehensive threat intelligence database.</p>
+                                                <div style="display: flex; gap: 0.75rem;">
+                                                    <button class="btn btn-info" onclick="openVirusTotalScanner()" style="flex: 1; padding: 0.875rem 1rem; font-weight: 600;">
+                                                        <i class="fas fa-scanner"></i> Scan Files/URLs
                                                     </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewVirusTotalAPI()" title="View API">
+                                                    <button class="btn btn-secondary btn-sm" onclick="viewVirusTotalAPI()" title="View API Documentation" style="padding: 0.875rem;">
                                                         <i class="fas fa-code"></i>
                                                     </button>
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Password Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(245, 158, 11, 0.2);">
-                                                <h4 style="margin: 0; color: #92400e; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-search"></i> Password Analysis
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #92400e; margin-bottom: 1rem;">Analyze password strength and get security recommendations.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-warning" onclick="analyzePasswords()" style="flex: 1;">
-                                                        <i class="fas fa-analytics"></i> Analyze
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewPasswordAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Breach Detection -->
-                                        <div class="card" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(147, 51, 234, 0.2);">
-                                                <h4 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-shield-virus"></i> Breach Detection
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #581c87; margin-bottom: 1rem;">Check if your accounts have been compromised in data breaches.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn" style="background: #9333ea; color: white; flex: 1;" onclick="checkBreaches()">
-                                                        <i class="fas fa-search"></i> Check
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewBreachAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Two-Factor Authentication -->
-                                        <div class="card" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(16, 185, 129, 0.2);">
-                                                <h4 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-mobile-alt"></i> 2FA Setup
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #065f46; margin-bottom: 1rem;">Set up Two-Factor Authentication for enhanced security.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-success" onclick="setup2FA()" style="flex: 1;">
-                                                        <i class="fas fa-shield-check"></i> Setup
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="view2FAAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- API Management -->
-                                        <div class="card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
-                                                <h4 style="margin: 0; color: #3730a3; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-cogs"></i> API Management
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #3730a3; margin-bottom: 1rem;">Manage API keys and access tokens for security services.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn" style="background: #6366f1; color: white; flex: 1;" onclick="manageAPIs()">
-                                                        <i class="fas fa-key"></i> Manage
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewAPIDocumentation()" title="Documentation">
-                                                        <i class="fas fa-book"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Recent Security Events -->
-                                <div style="margin-top: 2rem;">
-                                    <h3 style="margin-bottom: 1rem; font-size: 1.25rem; font-weight: 600;">Recent Security Events</h3>
-                                    <div class="card" style="background: #f8fafc;">
-                                        <div class="card-body">
-                                            <div style="text-align: center; padding: 2rem; color: var(--gray);">
-                                                <i class="fas fa-shield-check" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                                                <p>No recent security events to display.</p>
-                                                <small>Security events and alerts will appear here.</small>
                                             </div>
                                         </div>
                                     </div>
@@ -4271,8 +5486,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 <div class="brute-force-section">
                     <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fas fa-list"></i> Select Password from Vault
-                    </h4>
-                    <div class="password-selector">
+                    </h4>                    <div class="password-selector">
                         <div class="password-list" id="passwordList">
                             <div style="text-align: center; padding: 2rem; color: var(--gray);">
                                 <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem;"></i>
@@ -4280,9 +5494,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                             </div>
                         </div>
                     </div>
-                    <button class="btn btn-danger" onclick="analyzeSelectedPassword()" style="width: 100%;">
-                        <i class="fas fa-hammer"></i> Analyze Selected Password
-                    </button>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button class="btn btn-danger" onclick="analyzeSelectedPassword()" style="flex: 1;">
+                            <i class="fas fa-hammer"></i> Analyze Selected
+                        </button>
+                        <button class="btn btn-warning" onclick="analyzeAllVaultPasswords()" style="flex: 1;">
+                            <i class="fas fa-chart-bar"></i> Analyze All
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Same strength display and recommendations as analyze tab -->
@@ -4498,14 +5717,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             sidebar.classList.toggle('collapsed');
             mainContent.classList.toggle('expanded');
-        }
-        function copyToClipboard(text) {
-            if (text) {
-                navigator.clipboard.writeText(text).then(() => {
+        }        function copyToClipboard(textOrElementId) {
+            let textToCopy = textOrElementId;
+            
+            // If it looks like an element ID, try to get the element's value
+            if (typeof textOrElementId === 'string' && !textOrElementId.includes(' ') && !textOrElementId.includes('://')) {
+                const element = document.getElementById(textOrElementId);
+                if (element) {
+                    textToCopy = element.value || element.textContent || element.innerText;
+                }
+            }
+            
+            if (textToCopy) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
                     showNotification('Copied to clipboard!', 'success');
                 });
             }
-        }        function showNotification(message, type = 'info') {
+        }function showNotification(message, type = 'info') {
             const notification = document.createElement('div');
             const isLongMessage = message.length > 50;
             
@@ -5097,20 +6325,182 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.body.appendChild(form);
                 form.submit();
             }
-        }
-
-        // Close modal when clicking outside
+        }        // Close modal when clicking outside
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) {
                 event.target.style.display = 'none';
             }
-        }        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize generator if on generator page
+        }
+
+        // Credential delivery selection mode functions
+        function handleSelectionModeChange() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+            
+            console.log('Selection mode changed to:', selectedMode); // Debug log
+            
+            // Hide all selection sections
+            const singleSection = document.getElementById('single_selection');
+            const multipleSection = document.getElementById('multiple_selection');
+            const allSection = document.getElementById('all_selection');
+            
+            if (singleSection) singleSection.style.display = 'none';
+            if (multipleSection) multipleSection.style.display = 'none';
+            if (allSection) allSection.style.display = 'none';
+            
+            // Show the selected section
+            switch (selectedMode) {
+                case 'single':
+                    if (singleSection) {
+                        singleSection.style.display = 'block';
+                        console.log('Showing single selection');
+                    }
+                    // Clear any previous selections
+                    const singleSelect = document.getElementById('vault_item_id');
+                    if (singleSelect) singleSelect.value = '';
+                    break;
+                case 'multiple':
+                    if (multipleSection) {
+                        multipleSection.style.display = 'block';
+                        console.log('Showing multiple selection');
+                    }
+                    // Ensure checkboxes are properly enabled and can be multiple selected
+                    const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.disabled = false;
+                        // Clear previous selections when switching modes
+                        checkbox.checked = false;
+                        const itemBox = checkbox.closest('.item-checkbox');
+                        if (itemBox) itemBox.classList.remove('selected');
+                    });
+                    break;
+                case 'all':
+                    if (allSection) {
+                        allSection.style.display = 'block';
+                        console.log('Showing all selection');
+                    }
+                    // For all items mode, populate the preview
+                    populateAllItemsPreview();
+                    break;
+            }
+            
+            // Update form validation
+            updateFormValidation();
+        }
+        
+        function handleCheckboxChange() {
+            // Allow multiple selections - this is the core functionality
+            const checkedBoxes = document.querySelectorAll('input[name="vault_items[]"]:checked');
+            
+            console.log('Checkboxes changed, checked count:', checkedBoxes.length); // Debug log
+            
+            // Provide visual feedback for all selections
+            const allCheckboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            allCheckboxes.forEach(checkbox => {
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) {
+                    if (checkbox.checked) {
+                        itemBox.classList.add('selected');
+                    } else {
+                        itemBox.classList.remove('selected');
+                    }
+                }
+            });
+            
+            // Update form validation
+            updateFormValidation();
+            
+            // Show selection count
+            updateMultipleSelectionCount(checkedBoxes.length);
+        }
+        
+        function updateMultipleSelectionCount(count) {
+            let countDisplay = document.getElementById('selection-count');
+            if (!countDisplay) {
+                countDisplay = document.createElement('div');
+                countDisplay.id = 'selection-count';
+                countDisplay.className = 'selection-count';
+                const multipleSection = document.getElementById('multiple_selection');
+                if (multipleSection) {
+                    multipleSection.appendChild(countDisplay);
+                }
+            }
+            
+            if (count > 0) {
+                countDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${count} item${count !== 1 ? 's' : ''} selected`;
+                countDisplay.style.display = 'flex';
+            } else {
+                countDisplay.style.display = 'none';
+            }
+        }
+        
+        function populateAllItemsPreview() {
+            // This function can be enhanced later if needed
+            console.log('All items preview populated');
+        }
+        
+        function updateFormValidation() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+            const submitButton = document.querySelector('#credentialDeliveryForm button[type="submit"]');
+            let isValid = true;
+            let errorMessage = '';
+            
+            switch (selectedMode) {
+                case 'single':
+                    const singleSelect = document.getElementById('vault_item_id');
+                    isValid = singleSelect && singleSelect.value !== '';
+                    errorMessage = 'Please select a vault item to share.';
+                    break;
+                case 'multiple':
+                    const checkedBoxes = document.querySelectorAll('input[name="vault_items[]"]:checked');
+                    isValid = checkedBoxes.length > 0;
+                    errorMessage = 'Please select at least one vault item to share.';
+                    break;
+                case 'all':
+                    isValid = true; // All items mode is always valid if user has items
+                    break;
+            }
+            
+            if (submitButton) {
+                submitButton.disabled = !isValid;
+                if (!isValid) {
+                    submitButton.title = errorMessage;
+                    submitButton.classList.add('disabled');
+                } else {
+                    submitButton.title = '';
+                    submitButton.classList.remove('disabled');
+                }
+            }
+        }
+        
+        function selectAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) itemBox.classList.add('selected');
+            });
+            updateMultipleSelectionCount(checkboxes.length);
+            updateFormValidation();
+        }
+        
+        function clearAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+                const itemBox = checkbox.closest('.item-checkbox');
+                if (itemBox) itemBox.classList.remove('selected');
+            });
+            updateMultipleSelectionCount(0);
+            updateFormValidation();
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {            // Initialize generator if on generator page
             if (window.location.search.includes('section=generator')) {
                 // Set up slider synchronization
                 const slider = document.getElementById('passwordLengthSlider');
                 const lengthInput = document.getElementById('passwordLength');
+                const customCheckbox = document.getElementById('useCustomLength');
                 
                 if (slider) {
                     slider.addEventListener('input', updateLengthDisplay);
@@ -5118,8 +6508,19 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 }
                 
                 if (lengthInput) {
-                    lengthInput.addEventListener('input', syncSlider);
-                    lengthInput.addEventListener('change', autoGenerate);
+                    lengthInput.addEventListener('input', () => {
+                        if (customCheckbox && customCheckbox.checked) {
+                            syncCustomLength();
+                            autoGenerate();
+                        } else {
+                            syncSlider();
+                            autoGenerate();
+                        }
+                    });
+                }
+                
+                if (customCheckbox) {
+                    customCheckbox.addEventListener('change', toggleCustomLength);
                 }
                 
                 // Initialize length display
@@ -5128,19 +6529,42 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 // Generate initial value
                 setTimeout(regenerateValue, 100);
                 
-                console.log('Generator initialized');
-            }
-            
-            // Initialize send section
+                console.log('Generator initialized with custom length support');
+            }            // Initialize send section
             if (window.location.search.includes('section=send')) {
                 initializeSendSection();
-            }
-            
-            // Initialize message counter
-            const messageTextarea = document.getElementById('message');
-            if (messageTextarea) {
-                messageTextarea.addEventListener('input', updateMessageCounter);
-                updateMessageCounter();
+                initializeDragAndDrop();
+                  // Initialize credential delivery form
+                const credentialMessageTextarea = document.getElementById('credential_message');
+                if (credentialMessageTextarea) {
+                    credentialMessageTextarea.addEventListener('input', updateCredentialMessageCounter);
+                    updateCredentialMessageCounter();
+                }
+                    // Initialize password requirement toggle for credential delivery
+                const requirePasswordCheckbox = document.getElementById('require_password_credential');
+                if (requirePasswordCheckbox) {
+                    requirePasswordCheckbox.addEventListener('change', function() {
+                        const passwordSection = document.getElementById('credential_password_section');
+                        if (passwordSection) {
+                            passwordSection.style.display = this.checked ? 'block' : 'none';
+                        }
+                    });
+                }
+
+                // Initialize selection mode handling
+                const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+                selectionModeRadios.forEach(radio => {
+                    radio.addEventListener('change', handleSelectionModeChange);
+                });
+                
+                // Initialize multiple item checkboxes
+                const multipleCheckboxes = document.querySelectorAll('input[name="vault_items[]"]');
+                multipleCheckboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', handleCheckboxChange);
+                });
+                
+                // Initial setup
+                handleSelectionModeChange();
             }
             
             // Initialize text counter for secure send
@@ -5179,8 +6603,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             // Generate new value
             regenerateValue();
-        }
-          function regenerateValue() {
+        }        function regenerateValue() {
             const generatedValue = document.getElementById('generatedValue');
             const regenerateBtn = document.getElementById('regenerateBtn');
             
@@ -5216,8 +6639,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                     hidePasswordStrength();
                 }
                 
-                // Add to history
-                addToHistory(value, currentGeneratorTab);
+                // Note: History is only saved when user clicks "Save to History" button
                 
             } catch (error) {
                 console.error('Error generating value:', error);
@@ -5325,9 +6747,24 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             return { percentage, label, class: cssClass };
         }
-        
-        function generatePasswordValue() {
-            const length = parseInt(document.getElementById('passwordLength').value);
+          function generatePasswordValue() {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const lengthInput = document.getElementById('passwordLength');
+            const slider = document.getElementById('passwordLengthSlider');
+            
+            let length;
+            if (customCheckbox && customCheckbox.checked && lengthInput) {
+                length = Math.max(5, parseInt(lengthInput.value) || 14);
+            } else {
+                length = parseInt(slider ? slider.value : 14);
+            }
+            
+            // Safety check for very large lengths
+            if (length > 10000) {
+                showNotification('Password length limited to 10,000 characters for performance reasons', 'warning');
+                length = 10000;
+            }
+            
             const includeUppercase = document.getElementById('includeUppercase').checked;
             const includeLowercase = document.getElementById('includeLowercase').checked;
             const includeNumbers = document.getElementById('includeNumbers').checked;
@@ -5335,6 +6772,12 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             const minNumbers = parseInt(document.getElementById('minNumbers').value);
             const minSymbols = parseInt(document.getElementById('minSymbols').value);
             const avoidAmbiguous = document.getElementById('avoidAmbiguous').checked;
+            
+            // Validate that at least one character type is selected
+            if (!includeUppercase && !includeLowercase && !includeNumbers && !includeSymbols) {
+                showNotification('Please select at least one character type', 'error');
+                return 'Error: No character types selected';
+            }
             
             // Character sets
             let uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -5354,13 +6797,13 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             // Ensure minimum requirements
             if (includeNumbers && minNumbers > 0) {
-                for (let i = 0; i < minNumbers; i++) {
+                for (let i = 0; i < Math.min(minNumbers, length); i++) {
                     password += numbers.charAt(Math.floor(Math.random() * numbers.length));
                 }
             }
             
             if (includeSymbols && minSymbols > 0) {
-                for (let i = 0; i < minSymbols; i++) {
+                for (let i = 0; i < Math.min(minSymbols, length); i++) {
                     password += symbols.charAt(Math.floor(Math.random() * symbols.length));
                 }
             }
@@ -5376,8 +6819,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 password += charset.charAt(Math.floor(Math.random() * charset.length));
             }
             
-            // Shuffle password
-            return password.split('').sort(() => Math.random() - 0.5).join('');
+            // Shuffle password using Fisher-Yates algorithm for better randomization
+            const passwordArray = password.split('');
+            for (let i = passwordArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
+            }
+            
+            return passwordArray.join('');
         }
         
         function generatePassphraseValue() {
@@ -5503,25 +6952,64 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             clearTimeout(window.autoGenerateTimeout);
             window.autoGenerateTimeout = setTimeout(regenerateValue, 150);
         }
-        
-        function updateLengthDisplay() {
+          function updateLengthDisplay() {
             const slider = document.getElementById('passwordLengthSlider');
             const display = document.getElementById('lengthValue');
             const input = document.getElementById('passwordLength');
+            const customCheckbox = document.getElementById('useCustomLength');
             
             if (slider && display) {
-                display.textContent = slider.value;
-                if (input) input.value = slider.value;
+                let length = slider.value;
+                if (customCheckbox && customCheckbox.checked && input) {
+                    length = input.value || 14;
+                }
+                display.textContent = length;
+                if (input && !customCheckbox.checked) {
+                    input.value = length;
+                }
             }
         }
         
         function syncSlider() {
             const slider = document.getElementById('passwordLengthSlider');
             const input = document.getElementById('passwordLength');
+            const customCheckbox = document.getElementById('useCustomLength');
             
-            if (slider && input) {
-                slider.value = input.value;
+            if (slider && input && !customCheckbox.checked) {
+                slider.value = Math.min(256, Math.max(5, input.value || 14));
                 updateLengthDisplay();
+            }
+        }
+        
+        function syncCustomLength() {
+            const input = document.getElementById('passwordLength');
+            const display = document.getElementById('lengthValue');
+            
+            if (input && display) {
+                const length = Math.max(5, input.value || 14);
+                input.value = length;
+                display.textContent = length;
+            }
+        }
+        
+        function toggleCustomLength() {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const input = document.getElementById('passwordLength');
+            const slider = document.getElementById('passwordLengthSlider');
+            
+            if (customCheckbox && input && slider) {
+                const isCustom = customCheckbox.checked;
+                
+                input.style.display = isCustom ? 'block' : 'none';
+                slider.disabled = isCustom;
+                slider.style.opacity = isCustom ? '0.5' : '1';
+                
+                if (isCustom) {
+                    input.focus();
+                }
+                
+                updateLengthDisplay();
+                autoGenerate();
             }
         }
         
@@ -5539,12 +7027,20 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 toggleIcon.classList.toggle('fa-chevron-up', isHidden);
             }
         }
-        
-        function applyPreset(type) {
+          function applyPreset(type) {
+            const customCheckbox = document.getElementById('useCustomLength');
+            const lengthInput = document.getElementById('passwordLength');
+            
+            // Disable custom length for presets
+            if (customCheckbox) {
+                customCheckbox.checked = false;
+                toggleCustomLength();
+            }
+            
             if (type === 'simple') {
                 // Simple & Secure preset
                 document.getElementById('passwordLengthSlider').value = 12;
-                document.getElementById('passwordLength').value = 12;
+                if (lengthInput) lengthInput.value = 12;
                 document.getElementById('includeUppercase').checked = true;
                 document.getElementById('includeLowercase').checked = true;
                 document.getElementById('includeNumbers').checked = true;
@@ -5553,11 +7049,11 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.getElementById('minSymbols').value = 0;
                 document.getElementById('avoidAmbiguous').checked = true;
                 
-                showNotification('Applied Simple & Secure preset', 'info');
+                showNotification('Applied Simple & Secure preset (12 characters)', 'info');
             } else if (type === 'complex') {
                 // Maximum Security preset
                 document.getElementById('passwordLengthSlider').value = 20;
-                document.getElementById('passwordLength').value = 20;
+                if (lengthInput) lengthInput.value = 20;
                 document.getElementById('includeUppercase').checked = true;
                 document.getElementById('includeLowercase').checked = true;
                 document.getElementById('includeNumbers').checked = true;
@@ -5566,20 +7062,25 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 document.getElementById('minSymbols').value = 3;
                 document.getElementById('avoidAmbiguous').checked = false;
                 
-                showNotification('Applied Maximum Security preset', 'info');
+                showNotification('Applied Maximum Security preset (20 characters)', 'info');
             }
             
             updateLengthDisplay();
             autoGenerate();
-        }
-          function toggleHistory() {
+        }function toggleHistory() {
             const historyContent = document.getElementById('historyContent');
             const historyToggle = document.querySelector('.history-toggle');
+            const clearBtn = document.getElementById('clearHistoryBtn');
             
             if (historyContent && historyToggle) {
                 const isHidden = historyContent.style.display === 'none';
                 historyContent.style.display = isHidden ? 'block' : 'none';
                 historyToggle.classList.toggle('expanded', isHidden);
+                
+                // Show/hide clear button
+                if (clearBtn) {
+                    clearBtn.style.display = isHidden ? 'inline-block' : 'none';
+                }
                 
                 // Update history display when showing
                 if (isHidden) {
@@ -5647,9 +7148,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             }).catch(() => {
                 showNotification('Failed to copy from history', 'error');
             });
-        }
-        
-        function addToHistory() {
+        }        function addToHistory() {
             const generatedValue = document.getElementById('generatedValue');
             const saveBtn = document.getElementById('saveBtn');
             const value = generatedValue.textContent;
@@ -5659,14 +7158,30 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 return;
             }
             
+            // Check if this value is already in history to avoid duplicates
+            const history = loadGeneratorHistory();
+            const isDuplicate = history.some(entry => entry.value === value);
+            
+            if (isDuplicate) {
+                showNotification('This value is already saved in history!', 'info');
+                return;
+            }
+            
             // Visual feedback
             if (saveBtn) {
                 saveBtn.classList.add('clicked');
                 saveBtn.innerHTML = '<i class="fas fa-check"></i>';
             }
             
-            // For now, just add to history (could be enhanced to save to vault)
-            showNotification('Added to generator history!', 'success');
+            // Save to history
+            saveToGeneratorHistory(value, currentGeneratorTab);
+            showNotification('Saved to generator history!', 'success');
+            
+            // Update history display if visible
+            const historyContent = document.getElementById('historyContent');
+            if (historyContent && historyContent.style.display !== 'none') {
+                updateHistoryDisplay();
+            }
             
             // Reset button
             setTimeout(() => {
@@ -5676,20 +7191,131 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 }
             }, 1000);
         }
-
-        // Send Section Functions
+        
+        function saveToGeneratorHistory(value, type) {
+            try {
+                let history = JSON.parse(localStorage.getItem('generatorHistory') || '[]');
+                
+                // Create history entry
+                const entry = {
+                    id: Date.now(),
+                    value: value,
+                    type: type,
+                    timestamp: new Date().toISOString(),
+                    strength: type === 'password' ? calculatePasswordStrength(value) : null
+                };
+                
+                // Add to beginning of array
+                history.unshift(entry);
+                
+                // Keep only last 50 entries
+                history = history.slice(0, 50);
+                
+                // Save back to localStorage
+                localStorage.setItem('generatorHistory', JSON.stringify(history));
+                
+            } catch (error) {
+                console.error('Error saving to history:', error);
+            }
+        }
+        
+        function loadGeneratorHistory() {
+            try {
+                return JSON.parse(localStorage.getItem('generatorHistory') || '[]');
+            } catch (error) {
+                console.error('Error loading history:', error);
+                return [];
+            }
+        }
+        
+        function updateHistoryDisplay() {
+            const historyContent = document.getElementById('historyContent');
+            if (!historyContent) return;
+            
+            const history = loadGeneratorHistory();
+            
+            if (history.length === 0) {
+                historyContent.innerHTML = '<p class="no-history">No history available. Generate and save some values to see them here.</p>';
+                return;
+            }
+            
+            let historyHtml = '';
+            
+            history.forEach(entry => {
+                const date = new Date(entry.timestamp);
+                const timeAgo = getTimeAgo(date);
+                const strengthInfo = entry.strength ? 
+                    `<span class="history-strength ${entry.strength.class}">${entry.strength.label}</span>` : '';
+                
+                historyHtml += `
+                    <div class="history-item">
+                        <div class="history-item-header">
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span class="history-type">${entry.type}</span>
+                                ${strengthInfo}
+                            </div>
+                            <span class="history-time">${timeAgo}</span>
+                        </div>
+                        <div class="history-value" onclick="copyHistoryItem('${entry.value.replace(/'/g, '\\\'')}')" title="Click to copy">
+                            ${entry.value.length > 50 ? entry.value.substring(0, 50) + '...' : entry.value}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            historyContent.innerHTML = historyHtml;
+        }
+        
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return date.toLocaleDateString();
+        }
+        
+        function clearGeneratorHistory() {
+            if (confirm('Are you sure you want to clear all generator history?')) {
+                localStorage.removeItem('generatorHistory');
+                updateHistoryDisplay();
+                showNotification('Generator history cleared!', 'success');
+            }
+        }        // Send Section Functions
         function switchSendTab(tab) {
-            // Update tab buttons
+            // Update tab buttons (both send-tab-button and send-action-card)
             document.querySelectorAll('.send-tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+            document.querySelectorAll('.send-action-card').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to corresponding button
+            const tabButton = document.querySelector(`[data-tab="${tab}"]`);
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
             
             // Update content
             document.querySelectorAll('.send-tab-content').forEach(content => {
                 content.classList.remove('active');
             });
-            document.getElementById(`${tab}Tab`).classList.add('active');
+            
+            const targetTab = document.getElementById(`${tab}Tab`);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            
+            // Initialize selection mode handlers for credential tab
+            if (tab === 'credential') {
+                initializeCredentialSelectionMode();
+            }
         }
         
         function initializeSendSection() {
@@ -5698,55 +7324,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             typeRadios.forEach(radio => {
                 radio.addEventListener('change', toggleSendContent);
             });
-            
-            // Initialize preview updates
-            const senderNote = document.getElementById('sender_note');
-            const message = document.getElementById('message');
-            
-            if (senderNote) {
-                senderNote.addEventListener('input', updateEmailPreview);
-            }
-            if (message) {
-                message.addEventListener('input', updateEmailPreview);
-            }
         }
         
         function toggleSendContent() {
             const textContent = document.getElementById('textContent');
             const fileContent = document.getElementById('fileContent');
             const isFileType = document.getElementById('type_file').checked;
-            
-            textContent.style.display = isFileType ? 'none' : 'block';
+              textContent.style.display = isFileType ? 'none' : 'block';
             fileContent.style.display = isFileType ? 'block' : 'none';
-        }
-        
-        function updateEmailPreview() {
-            const senderNote = document.getElementById('sender_note').value;
-            const message = document.getElementById('message').value;
-            
-            const senderNotePreview = document.getElementById('senderNotePreview');
-            const messagePreview = document.getElementById('messagePreview');
-            
-            if (senderNote) {
-                senderNotePreview.innerHTML = `<strong>From:</strong> ${senderNote}`;
-                senderNotePreview.style.display = 'block';
-            } else {
-                senderNotePreview.style.display = 'none';
-            }
-            
-            if (message) {
-                messagePreview.innerHTML = message.replace(/\n/g, '<br>');
-            } else {
-                messagePreview.innerHTML = '<em>Your message will appear here as you type...</em>';
-            }
-        }
-        
-        function updateMessageCounter() {
-            const message = document.getElementById('message').value;
-            const counter = document.getElementById('messageCounter');
-            if (counter) {
-                counter.textContent = message.length;
-            }
         }
         
         function updateTextCounter() {
@@ -5754,17 +7339,257 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             const counter = document.getElementById('textCounter');
             if (counter) {
                 counter.textContent = text.length;
+            }        }
+        
+        function toggleExpiryType() {
+            const expiryType = document.getElementById('expiry_type').value;
+            const presetOptions = document.getElementById('preset_options');
+            const customOptions = document.getElementById('custom_options');
+            
+            if (expiryType === 'custom') {
+                presetOptions.style.display = 'none';
+                customOptions.style.display = 'block';
+            } else {
+                presetOptions.style.display = 'block';
+                customOptions.style.display = 'none';
             }
         }
         
-        function clearEmailForm() {
-            document.getElementById('anonymousEmailForm').reset();
-            updateEmailPreview();
-            updateMessageCounter();
-        }
-          function clearSecureForm() {
+        function clearSecureForm() {
             document.getElementById('secureSendForm').reset();
             updateTextCounter();
+        }
+        
+        function clearCredentialForm() {
+            document.getElementById('credentialDeliveryForm').reset();
+            updateCredentialMessageCounter();
+            
+            // Hide password section if visible
+            const passwordSection = document.getElementById('credential_password_section');
+            if (passwordSection) {
+                passwordSection.style.display = 'none';
+            }
+        }        
+        function updateCredentialMessageCounter() {
+            const textarea = document.getElementById('credential_message');
+            const counter = document.getElementById('credentialMessageCounter');
+            if (textarea && counter) {
+                counter.textContent = textarea.value.length;
+            }        }
+        
+        // Credential delivery functions
+        function initializeCredentialSelectionMode() {
+            const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+            selectionModeRadios.forEach(radio => {
+                radio.addEventListener('change', toggleCredentialSelection);
+            });
+            
+            // Initialize password checkbox handler
+            const passwordCheckbox = document.getElementById('require_password_credential');
+            if (passwordCheckbox) {
+                passwordCheckbox.addEventListener('change', toggleCredentialPassword);
+            }
+            
+            // Initialize message counter
+            const messageTextarea = document.getElementById('credential_message');
+            if (messageTextarea) {
+                messageTextarea.addEventListener('input', updateCredentialMessageCounter);
+            }
+            
+            // Initialize with current selection
+            toggleCredentialSelection();
+        }
+        
+        function toggleCredentialSelection() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked').value;
+            
+            // Hide all selection sections
+            document.getElementById('single_selection').style.display = 'none';
+            document.getElementById('multiple_selection').style.display = 'none';
+            document.getElementById('all_selection').style.display = 'none';
+            
+            // Show selected section
+            switch(selectedMode) {
+                case 'single':
+                    document.getElementById('single_selection').style.display = 'block';
+                    break;
+                case 'multiple':
+                    document.getElementById('multiple_selection').style.display = 'block';
+                    break;
+                case 'all':
+                    document.getElementById('all_selection').style.display = 'block';
+                    break;
+            }
+        }
+        
+        function selectAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function clearAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        function toggleCredentialPassword() {
+            const enablePassword = document.getElementById('require_password_credential').checked;
+            const passwordSection = document.getElementById('credential_password_section');
+            
+            if (enablePassword) {
+                passwordSection.style.display = 'block';
+            } else {
+                passwordSection.style.display = 'none';
+                document.getElementById('credential_access_password').value = '';
+            }
+        }
+
+        // Enhanced file handling functions
+        function handleFileSelection(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            // Validate file size (25MB limit)
+            const maxSize = 25 * 1024 * 1024; // 25MB in bytes
+            if (file.size > maxSize) {
+                showNotification('File size exceeds 25MB limit. Please choose a smaller file.', 'error');
+                input.value = '';
+                return;
+            }
+            
+            // Show file preview
+            showFilePreview(file);
+            
+            // Hide upload area
+            const uploadArea = document.querySelector('.file-upload-area');
+            if (uploadArea) {
+                uploadArea.style.display = 'none';
+            }
+        }
+        
+        function showFilePreview(file) {
+            const preview = document.getElementById('file-preview');
+            const fileName = preview.querySelector('.file-name');
+            const fileSize = preview.querySelector('.file-size');
+            const fileType = preview.querySelector('.file-type');
+            const fileIcon = preview.querySelector('.file-icon i');
+            const imagePreview = document.getElementById('image-preview');
+            const previewImage = document.getElementById('preview-image');
+            
+            if (!preview) return;
+            
+            // Update file info
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileType.textContent = file.type || 'Unknown';
+            
+            // Update icon based on file type
+            if (file.type.startsWith('image/')) {
+                fileIcon.className = 'fas fa-image';
+                fileIcon.style.color = '#10b981';
+                
+                // Show image preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImage.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else if (file.type.includes('pdf')) {
+                fileIcon.className = 'fas fa-file-pdf';
+                fileIcon.style.color = '#ef4444';
+                imagePreview.style.display = 'none';
+            } else if (file.type.includes('zip') || file.type.includes('rar')) {
+                fileIcon.className = 'fas fa-file-archive';
+                fileIcon.style.color = '#f59e0b';
+                imagePreview.style.display = 'none';
+            } else if (file.type.includes('text')) {
+                fileIcon.className = 'fas fa-file-alt';
+                fileIcon.style.color = '#6366f1';
+                imagePreview.style.display = 'none';
+            } else {
+                fileIcon.className = 'fas fa-file';
+                fileIcon.style.color = '#6b7280';
+                imagePreview.style.display = 'none';
+            }
+            
+            // Show preview
+            preview.style.display = 'block';
+        }
+        
+        function removeFile() {
+            const fileInput = document.getElementById('send_file');
+            const preview = document.getElementById('file-preview');
+            const uploadArea = document.querySelector('.file-upload-area');
+            const imagePreview = document.getElementById('image-preview');
+            
+            // Reset file input
+            if (fileInput) fileInput.value = '';
+            
+            // Hide preview
+            if (preview) preview.style.display = 'none';
+            
+            // Show upload area
+            if (uploadArea) uploadArea.style.display = 'block';
+            
+            // Hide image preview
+            if (imagePreview) imagePreview.style.display = 'none';
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Drag and drop functionality
+        function initializeDragAndDrop() {
+            const uploadArea = document.querySelector('.file-upload-area');
+            if (!uploadArea) return;
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            uploadArea.addEventListener('drop', handleDrop, false);
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function highlight() {
+                uploadArea.classList.add('dragover');
+            }
+            
+            function unhighlight() {
+                uploadArea.classList.remove('dragover');
+            }
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                const fileInput = document.getElementById('send_file');
+                
+                if (files.length > 0 && fileInput) {
+                    fileInput.files = files;
+                    handleFileSelection(fileInput);
+                }
+            }
         }
         
         // Send Management Functions
@@ -5849,20 +7674,132 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             performPasswordAnalysis(password, 'analyze');
         }
-        
-        function analyzeSelectedPassword() {
+          function analyzeSelectedPassword() {
             const selectedPassword = document.querySelector('.password-item.selected');
             if (!selectedPassword) {
                 showNotification('Please select a password from your vault', 'warning');
                 return;
             }
-            
+
             const password = selectedPassword.dataset.password;
-            performPasswordAnalysis(password, 'vault');
+            const name = selectedPassword.dataset.name;
+            performPasswordAnalysis(password, 'vault', name);
         }
         
-        function performPasswordAnalysis(password, mode) {
-            showNotification('Analyzing password strength...', 'info');
+        function analyzeAllVaultPasswords() {
+            const passwordItems = document.querySelectorAll('.password-item');
+            if (passwordItems.length === 0) {
+                showNotification('No passwords found in vault to analyze', 'warning');
+                return;
+            }
+            
+            showNotification('Analyzing all vault passwords...', 'info');
+            
+            const analyses = [];
+            passwordItems.forEach(item => {
+                const password = item.dataset.password;
+                const name = item.dataset.name;
+                const analysis = calculatePasswordStrength(password);
+                analysis.name = name;
+                analyses.push(analysis);
+            });
+            
+            // Sort by strength score (weakest first)
+            analyses.sort((a, b) => a.score - b.score);
+            
+            setTimeout(() => {
+                displayAllPasswordsAnalysis(analyses);
+                showNotification(`Analysis complete! Analyzed ${analyses.length} passwords`, 'success');
+            }, 1500);
+        }
+        
+        function displayAllPasswordsAnalysis(analyses) {
+            // Create a comprehensive report
+            const totalPasswords = analyses.length;
+            const weakPasswords = analyses.filter(a => a.score < 40).length;
+            const goodPasswords = analyses.filter(a => a.score >= 70).length;
+            const averageScore = Math.round(analyses.reduce((sum, a) => sum + a.score, 0) / totalPasswords);
+            
+            const report = `
+                <div class="vault-analysis-report">
+                    <h3 style="color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-chart-pie"></i> Vault Security Analysis Report
+                    </h3>
+                    
+                    <div class="analysis-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div class="stat-item" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #0369a1;">${totalPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Total Passwords</div>
+                        </div>
+                        <div class="stat-item" style="background: #fef2f2; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #dc2626;">${weakPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Weak/Very Weak</div>
+                        </div>
+                        <div class="stat-item" style="background: #f0fdf4; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #059669;">${goodPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Good/Excellent</div>
+                        </div>
+                        <div class="stat-item" style="background: #fefce8; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #ca8a04;">${averageScore}/100</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Average Score</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin-bottom: 1rem; color: var(--dark);">
+                        <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> Passwords Requiring Attention:
+                    </h4>
+                    
+                    <div class="password-analysis-list" style="max-height: 300px; overflow-y: auto;">
+                        ${analyses.filter(a => a.score < 70).map(analysis => `
+                            <div class="password-analysis-item" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; background: white;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <strong style="color: var(--dark);">${analysis.name}</strong>
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; background: ${analysis.color}; color: white;">
+                                        ${analysis.level} (${analysis.score}/100)
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">
+                                    <strong>Crack Time:</strong> ${analysis.crackTime} | 
+                                    <strong>Patterns:</strong> ${analysis.patterns}
+                                </div>
+                                <div style="font-size: 0.8rem; color: #ef4444;">
+                                    <strong>Issues:</strong> ${analysis.recommendations.filter(r => r.includes('⚠️')).join(', ').replace(/⚠️/g, '') || 'None'}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    ${analyses.filter(a => a.score >= 70).length > 0 ? `
+                        <h4 style="margin: 1.5rem 0 1rem 0; color: var(--success);">
+                            <i class="fas fa-check-circle"></i> Strong Passwords:
+                        </h4>
+                        <div style="font-size: 0.875rem; color: #059669;">
+                            ${analyses.filter(a => a.score >= 70).map(a => a.name).join(', ')}
+                        </div>
+                    ` : ''}
+                    
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <h5 style="color: #1e40af; margin-bottom: 0.5rem;">
+                            <i class="fas fa-lightbulb"></i> Recommendations:
+                        </h5>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: #1e40af;">
+                            ${weakPasswords > 0 ? '<li>Update weak passwords immediately</li>' : ''}
+                            <li>Use unique passwords for each account</li>
+                            <li>Enable two-factor authentication where possible</li>
+                            <li>Consider using the password generator for new passwords</li>
+                            <li>Review and update passwords regularly</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            
+            // Display the report in the vault strength display area
+            document.getElementById('vaultStrengthDisplay').innerHTML = report;
+            document.getElementById('vaultStrengthDisplay').style.display = 'block';
+            document.getElementById('vaultRecommendations').style.display = 'none';
+        }
+          function performPasswordAnalysis(password, mode, name = '') {
+            showNotification(`Analyzing password strength${name ? ' for ' + name : ''}...`, 'info');
             
             // Calculate password strength metrics
             const analysis = calculatePasswordStrength(password);
@@ -5872,94 +7809,162 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 showNotification('Password analysis complete!', 'success');
             }, 1500);
         }
-        
-        function calculatePasswordStrength(password) {
+          function calculatePasswordStrength(password) {
             const length = password.length;
             const hasLowercase = /[a-z]/.test(password);
             const hasUppercase = /[A-Z]/.test(password);
             const hasNumbers = /[0-9]/.test(password);
             const hasSymbols = /[^A-Za-z0-9]/.test(password);
-            const hasCommonWords = /password|123456|qwerty|admin|letmein/i.test(password);
-            const hasPattern = /(.)\1{2,}|012|123|234|345|456|567|678|789|890|abc|bcd|cde/i.test(password);
             
-            // Calculate entropy
+            // Enhanced pattern detection
+            const commonWords = /password|123456|qwerty|admin|letmein|welcome|monkey|dragon|princess|abc123|iloveyou|sunshine|master|shadow|12345|football|baseball|superman|batman|trustno1/i.test(password);
+            const repeatingChars = /(.)\1{2,}/.test(password);
+            const sequentialChars = /012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz/i.test(password);
+            const keyboardPattern = /qwerty|asdf|zxcv|1234|qazwsx|plm|okn|ijn/i.test(password);
+            const datePattern = /19\d{2}|20\d{2}|0[1-9]\/|1[0-2]\/|\d{1,2}\/\d{1,2}\/\d{2,4}/.test(password);
+            
+            // Calculate character set size
             let charset = 0;
             if (hasLowercase) charset += 26;
             if (hasUppercase) charset += 26;
             if (hasNumbers) charset += 10;
             if (hasSymbols) charset += 32;
             
-            const entropy = Math.log2(Math.pow(charset, length));
+            // Calculate entropy
+            const entropy = length * Math.log2(charset);
             
-            // Calculate complexity score
+            // Advanced complexity scoring
             let complexityScore = 0;
-            if (length >= 8) complexityScore += 25;
+            
+            // Length scoring (progressive)
+            if (length >= 8) complexityScore += 20;
             if (length >= 12) complexityScore += 15;
             if (length >= 16) complexityScore += 10;
-            if (hasLowercase) complexityScore += 10;
-            if (hasUppercase) complexityScore += 10;
-            if (hasNumbers) complexityScore += 10;
-            if (hasSymbols) complexityScore += 20;
-            if (hasCommonWords) complexityScore -= 30;
-            if (hasPattern) complexityScore -= 20;
+            if (length >= 20) complexityScore += 5;
             
+            // Character variety
+            if (hasLowercase) complexityScore += 8;
+            if (hasUppercase) complexityScore += 8;
+            if (hasNumbers) complexityScore += 8;
+            if (hasSymbols) complexityScore += 16;
+            
+            // Bonus for character mix
+            const charTypes = [hasLowercase, hasUppercase, hasNumbers, hasSymbols].filter(Boolean).length;
+            if (charTypes >= 3) complexityScore += 10;
+            if (charTypes === 4) complexityScore += 5;
+            
+            // Penalties
+            if (commonWords) complexityScore -= 35;
+            if (repeatingChars) complexityScore -= 15;
+            if (sequentialChars) complexityScore -= 20;
+            if (keyboardPattern) complexityScore -= 25;
+            if (datePattern) complexityScore -= 15;
+            if (length < 8) complexityScore -= 30;
+            
+            // Calculate crack time estimates
+            const guessesPerSecond = 1000000000; // 1 billion guesses/sec (modern GPU)
+            const totalPossibilities = Math.pow(charset, length);
+            let secondsToCrack = totalPossibilities / (2 * guessesPerSecond);
+            
+            // Adjust for pattern penalties
+            if (commonWords || repeatingChars || sequentialChars || keyboardPattern) {
+                secondsToCrack = secondsToCrack / 1000; // Much easier to crack
+            }
+            
+            // Format crack time
+            let crackTime = "";
+            let crackTimeNumeric = secondsToCrack;
+            
+            if (secondsToCrack < 1) {
+                crackTime = "Instantly";
+                crackTimeNumeric = 0;
+            } else if (secondsToCrack < 60) {
+                crackTime = "< 1 minute";
+                crackTimeNumeric = secondsToCrack;
+            } else if (secondsToCrack < 3600) {
+                const minutes = Math.round(secondsToCrack / 60);
+                crackTime = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 86400) {
+                const hours = Math.round(secondsToCrack / 3600);
+                crackTime = `${hours} hour${hours !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000) {
+                const days = Math.round(secondsToCrack / 86400);
+                crackTime = `${days} day${days !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000000) {
+                const years = Math.round(secondsToCrack / 31536000);
+                crackTime = `${years} year${years !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000000000) {
+                const millennia = Math.round(secondsToCrack / 31536000000);
+                crackTime = `${millennia} millennia`;
+            } else {
+                crackTime = "Quintillions of years";
+            }
+            
+            // Ensure score is within bounds
             complexityScore = Math.max(0, Math.min(100, complexityScore));
             
-            // Estimate crack time
-            const guessesPerSecond = 1000000000; // 1 billion guesses per second
-            const totalPossibilities = Math.pow(charset, length);
-            const secondsToCrack = totalPossibilities / (2 * guessesPerSecond);
-            
-            let crackTime = "";
-            if (secondsToCrack < 60) {
-                crackTime = "< 1 minute";
-            } else if (secondsToCrack < 3600) {
-                crackTime = Math.round(secondsToCrack / 60) + " minutes";
-            } else if (secondsToCrack < 86400) {
-                crackTime = Math.round(secondsToCrack / 3600) + " hours";
-            } else if (secondsToCrack < 31536000) {
-                crackTime = Math.round(secondsToCrack / 86400) + " days";
-            } else if (secondsToCrack < 31536000000) {
-                crackTime = Math.round(secondsToCrack / 31536000) + " years";
-            } else {
-                crackTime = "Millions of years";
-            }
-            
-            // Determine strength level
+            // Determine strength level and color
             let strengthLevel = "";
             let strengthColor = "";
-            if (complexityScore < 30) {
+            if (complexityScore < 20) {
                 strengthLevel = "Very Weak";
-                strengthColor = "#ef4444";
-            } else if (complexityScore < 50) {
+                strengthColor = "#dc2626";
+            } else if (complexityScore < 40) {
                 strengthLevel = "Weak";
-                strengthColor = "#f59e0b";
-            } else if (complexityScore < 70) {
+                strengthColor = "#ea580c";
+            } else if (complexityScore < 60) {
                 strengthLevel = "Fair";
-                strengthColor = "#eab308";
-            } else if (complexityScore < 85) {
+                strengthColor = "#d97706";
+            } else if (complexityScore < 80) {
                 strengthLevel = "Good";
-                strengthColor = "#10b981";
+                strengthColor = "#059669";
             } else {
                 strengthLevel = "Excellent";
-                strengthColor = "#059669";
+                strengthColor = "#047857";
             }
             
-            // Generate recommendations
+            // Generate detailed recommendations
             const recommendations = [];
             if (length < 12) recommendations.push("Use at least 12 characters for better security");
+            if (length < 8) recommendations.push("⚠️ Password is too short - minimum 8 characters required");
             if (!hasUppercase) recommendations.push("Include uppercase letters (A-Z)");
             if (!hasLowercase) recommendations.push("Include lowercase letters (a-z)");
             if (!hasNumbers) recommendations.push("Include numbers (0-9)");
             if (!hasSymbols) recommendations.push("Include special characters (!@#$%^&*)");
-            if (hasCommonWords) recommendations.push("Avoid common words like 'password' or '123456'");
-            if (hasPattern) recommendations.push("Avoid repetitive patterns and sequences");
-            if (recommendations.length === 0) recommendations.push("Your password meets security best practices!");
+            if (commonWords) recommendations.push("⚠️ Avoid common dictionary words and phrases");
+            if (repeatingChars) recommendations.push("⚠️ Avoid repeated characters (e.g., 'aaa', '111')");
+            if (sequentialChars) recommendations.push("⚠️ Avoid sequential characters (e.g., '123', 'abc')");
+            if (keyboardPattern) recommendations.push("⚠️ Avoid keyboard patterns (e.g., 'qwerty', 'asdf')");
+            if (datePattern) recommendations.push("⚠️ Avoid dates and years in passwords");
+            if (charTypes < 3) recommendations.push("Use a mix of different character types");
+            if (recommendations.length === 0) recommendations.push("🎉 Excellent! Your password follows security best practices");
+            
+            // Detect patterns for display
+            const patterns = [];
+            if (commonWords) patterns.push("Common words");
+            if (repeatingChars) patterns.push("Repeated chars");
+            if (sequentialChars) patterns.push("Sequential chars");
+            if (keyboardPattern) patterns.push("Keyboard pattern");
+            if (datePattern) patterns.push("Date pattern");
+            if (patterns.length === 0) patterns.push("None detected");
             
             return {
-                score: complexityScore,
+                score: Math.round(complexityScore),
                 level: strengthLevel,
                 color: strengthColor,
+                crackTime: crackTime,
+                crackTimeSeconds: crackTimeNumeric,
+                entropy: Math.round(entropy * 10) / 10,
+                patterns: patterns.join(", "),
+                recommendations: recommendations,
+                charset: charset,
+                length: length,
+                hasLowercase: hasLowercase,
+                hasUppercase: hasUppercase,
+                hasNumbers: hasNumbers,
+                hasSymbols: hasSymbols
+            };
+        }
                 entropy: Math.round(entropy),
                 crackTime: crackTime,
                 patterns: hasCommonWords || hasPattern ? "Yes" : "None",
@@ -5994,35 +7999,68 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             document.getElementById(prefix + 'Recommendations').style.display = 'block';
         }
-        
-        function loadVaultPasswords() {
-            // Simulate loading vault passwords
-            setTimeout(() => {
-                const passwordList = document.getElementById('passwordList');
+          function loadVaultPasswords() {
+            const passwordList = document.getElementById('passwordList');
+            passwordList.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: var(--gray);">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <p>Loading your vault passwords...</p>
+                </div>
+            `;
+            
+            // Load real vault passwords via AJAX
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get_vault_passwords_for_analysis'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.passwords.length > 0) {
+                    let html = '';
+                    data.passwords.forEach(item => {
+                        const maskedPassword = '•'.repeat(Math.min(item.password.length, 15));
+                        html += `
+                            <div class="password-item" data-password="${item.password.replace(/"/g, '&quot;')}" data-name="${item.name}" onclick="selectPassword(this)">
+                                <div class="password-info">
+                                    <h4>${item.name}</h4>
+                                    <p>${item.website !== 'No website' ? item.website : item.username}</p>
+                                </div>
+                                <div style="font-family: monospace; color: var(--gray); font-size: 0.9rem;">${maskedPassword}</div>
+                            </div>
+                        `;
+                    });
+                    passwordList.innerHTML = html;
+                } else if (data.success && data.passwords.length === 0) {
+                    passwordList.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; color: var(--gray);">
+                            <i class="fas fa-info-circle" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                            <p>No login passwords found in your vault.</p>
+                            <small>Add some login items to your vault to analyze their passwords.</small>
+                        </div>
+                    `;
+                } else {
+                    passwordList.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; color: var(--danger);">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                            <p>Error loading vault passwords</p>
+                            <small>${data.message || 'Please try again later'}</small>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading vault passwords:', error);
                 passwordList.innerHTML = `
-                    <div class="password-item" data-password="MySecureP@ssw0rd!" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Gmail Account</h4>
-                            <p>john.doe@gmail.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">••••••••••••••</div>
-                    </div>
-                    <div class="password-item" data-password="BankLogin123!" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Chase Bank</h4>
-                            <p>www.chase.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">••••••••••••</div>
-                    </div>
-                    <div class="password-item" data-password="password123" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Old Facebook</h4>
-                            <p>facebook.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">•••••••••••</div>
+                    <div style="text-align: center; padding: 2rem; color: var(--danger);">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                        <p>Network error loading passwords</p>
+                        <small>Please check your connection and try again</small>
                     </div>
                 `;
-            }, 500);
+            });
         }
         
         function selectPassword(element) {
@@ -6424,9 +8462,234 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         function viewAuditAPI() {
             showNotification('Security Audit API documentation opened', 'info');
         }
-        
-        function viewAPIDocumentation() {
+          function viewAPIDocumentation() {
             showNotification('API Documentation center opened', 'info');
+        }
+
+        // Send functionality
+        function switchSendTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.send-tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.send-tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            const targetTab = document.getElementById(tabName + 'Tab');
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            
+            // Add active class to clicked tab button
+            const targetButton = document.querySelector(`[data-tab="${tabName}"]`);
+            if (targetButton) {
+                targetButton.classList.add('active');
+            }
+        }
+
+        function viewSendPassword(sendId) {
+            // Show loading state
+            const btn = document.getElementById('viewPasswordBtn_' + sendId);
+            if (btn) {
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                btn.disabled = true;
+                
+                // Make AJAX request to get password
+                fetch('', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'action=get_send_password&send_id=' + sendId
+                })
+                .then(response => response.json())                .then(data => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    
+                    if (data.success && data.password) {
+                        showPasswordModal(data.password);
+                    } else if (data.isLegacy) {
+                        showNotification(data.message, 'warning');
+                    } else {
+                        showNotification(data.message || 'No password set for this send', 'info');
+                    }
+                })
+                .catch(error => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    showNotification('Error retrieving password: ' + error.message, 'error');
+                });
+            }
+        }
+
+        function showPasswordModal(password) {
+            // Create modal HTML
+            const modalHtml = `
+                <div id="passwordModal" class="modal" style="display: block; z-index: 10000;">
+                    <div class="modal-content" style="max-width: 500px; margin: 5% auto;">
+                        <div class="modal-header">
+                            <h3 class="modal-title">
+                                <i class="fas fa-key"></i> Send Access Password
+                            </h3>
+                            <button class="modal-close" onclick="closePasswordModal()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 2rem;">
+                            <div style="background: #f8fafc; border: 2px solid #e5e7eb; border-radius: var(--border-radius); padding: 1.5rem; margin-bottom: 1.5rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--dark);">
+                                    <i class="fas fa-lock"></i> Access Password:
+                                </label>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="text" id="displayPassword" value="${password}" readonly 
+                                           style="flex: 1; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: var(--border-radius); background: white; font-family: monospace; font-size: 1.1rem;">
+                                    <button class="btn btn-secondary" onclick="copyPassword()" title="Copy Password">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="text-align: center;">
+                                <p style="color: var(--gray); margin-bottom: 1rem;">
+                                    <i class="fas fa-info-circle"></i> 
+                                    Share this password with recipients to access the send
+                                </p>
+                                <button class="btn btn-primary" onclick="copyPassword()" style="min-width: 150px;">
+                                    <i class="fas fa-copy"></i> Copy Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('passwordModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        function copyPassword() {
+            const passwordField = document.getElementById('displayPassword');
+            if (passwordField) {
+                passwordField.select();
+                navigator.clipboard.writeText(passwordField.value).then(() => {
+                    showNotification('Password copied to clipboard!', 'success');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    document.execCommand('copy');
+                    showNotification('Password copied to clipboard!', 'success');
+                });
+            }
+        }
+
+        function closePasswordModal() {
+            const modal = document.getElementById('passwordModal');
+            if (modal) {
+                modal.remove();
+            }
+        }        function copyAccessLink(token) {
+            const link = window.location.origin + window.location.pathname.replace('main_vault.php', '') + 'send_access.php?token=' + token;
+            navigator.clipboard.writeText(link).then(() => {
+                showNotification('Access link copied to clipboard!', 'success');
+            }).catch(() => {
+                showNotification('Failed to copy link', 'error');
+            });        }        // Initialize page when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing...');
+            
+            // Initialize send section if it exists
+            if (document.getElementById('secureSendForm')) {
+                initializeSendSection();
+            }
+            
+            // Initialize credential selection mode directly
+            const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+            if (selectionModeRadios.length > 0) {
+                console.log('Found selection mode radios:', selectionModeRadios.length);
+                selectionModeRadios.forEach(radio => {
+                    radio.addEventListener('change', function() {
+                        console.log('Selection mode changed to:', this.value);
+                        toggleCredentialSelection();
+                    });
+                });
+                
+                // Initialize password checkbox
+                const passwordCheckbox = document.getElementById('require_password_credential');
+                if (passwordCheckbox) {
+                    passwordCheckbox.addEventListener('change', function() {
+                        toggleCredentialPassword();
+                    });
+                }
+                
+                // Initialize with current selection
+                toggleCredentialSelection();
+            }
+            
+            // Initialize text counter for credential message
+            const credentialMessage = document.getElementById('credential_message');
+            if (credentialMessage) {
+                credentialMessage.addEventListener('input', updateCredentialMessageCounter);
+                updateCredentialMessageCounter(); // Initial count
+            }            // Simple form submission handler
+            const credentialForm = document.getElementById('credentialDeliveryForm');
+            if (credentialForm) {
+                credentialForm.addEventListener('submit', function(e) {
+                    console.log('Form submit event triggered');
+                    
+                    // Basic validation only
+                    const selectionMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+                    
+                    if (selectionMode === 'single') {
+                        const vaultItemId = document.getElementById('vault_item_id')?.value;
+                        if (!vaultItemId) {
+                            e.preventDefault();
+                            alert('Please select a vault item to share');
+                            return false;
+                        }
+                    }
+                    
+                    console.log('Form validation passed, submitting...');
+                });
+            }
+        });
+
+        // Validate credential form before submission
+        function validateCredentialForm() {
+            const selectionMode = document.querySelector('input[name="selection_mode"]:checked').value;
+            
+            // Validate based on selection mode
+            if (selectionMode === 'single') {
+                const vaultItemId = document.getElementById('vault_item_id').value;
+                if (!vaultItemId) {
+                    showNotification('Please select a vault item to share', 'error');
+                    return false;
+                }
+            } else if (selectionMode === 'multiple') {
+                const checkedItems = document.querySelectorAll('input[name="vault_items[]"]:checked');
+                if (checkedItems.length === 0) {
+                    showNotification('Please select at least one vault item to share', 'error');
+                    return false;
+                }
+            }
+
+            // Validate password if enabled
+            const passwordEnabled = document.getElementById('require_password_credential').checked;
+            if (passwordEnabled) {
+                const password = document.getElementById('credential_access_password').value;
+                if (!password || password.length < 4) {
+                    showNotification('Access password must be at least 4 characters long', 'error');
+                    return false;
+                }
+            }
+
+            return true;
         }
     </script>
 </body>
