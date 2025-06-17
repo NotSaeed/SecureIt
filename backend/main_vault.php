@@ -272,6 +272,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (Exception $e) {
                     $_SESSION['message'] = 'Failed to delete send: ' . $e->getMessage();                    $_SESSION['message_type'] = 'error';
                     header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');                    exit();
+                }            }
+            break;
+            
+        case 'get_send_password':
+            if ($isLoggedIn && isset($_POST['send_id'])) {
+                try {
+                    $sendManager = new SendManager();
+                    $password = $sendManager->getSendPassword($_POST['send_id'], $_SESSION['user_id']);
+                    
+                    header('Content-Type: application/json');
+                    if ($password !== null) {
+                        echo json_encode(['success' => true, 'password' => $password]);
+                    } else {
+                        echo json_encode(['success' => false, 'message' => 'Password not found or no password set']);
+                    }
+                    exit();
+                } catch (Exception $e) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'message' => 'Error retrieving password: ' . $e->getMessage()]);
+                    exit();
                 }
             }
             break;
@@ -1832,6 +1852,147 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-size: 0.875rem;
             font-weight: 500;
             margin-left: 1rem;
+        }
+
+        /* Password Modal Styles */
+        .password-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .password-modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .password-modal-content {
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .password-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .password-modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .close-modal:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .password-modal-body {
+            padding: 1.5rem;
+        }
+
+        .password-display {
+            margin-bottom: 1rem;
+        }
+
+        .password-display label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .password-value {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .password-value input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            background: #f9fafb;
+            font-weight: 600;
+        }
+
+        .btn-copy-password {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.875rem;
+        }
+
+        .btn-copy-password:hover {
+            background: #2563eb;
+        }
+
+        .password-warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            color: #92400e;
+            font-size: 0.875rem;
+        }
+
+        .password-warning i {
+            color: #f59e0b;
+            margin-top: 0.125rem;
+        }
+
+        .password-modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
         }
 
         /* Radio Group Styles */
@@ -4604,14 +4765,21 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                 <div class="form-group">
                                                     <label for="credential_expiry" class="enhanced-label">
                                                         <i class="fas fa-hourglass-half"></i> Access Duration
-                                                    </label>
-                                                    <select id="credential_expiry" name="expiry_hours" class="enhanced-input" required>
+                                                    </label>                                                    <select id="credential_expiry" name="expiry_hours" class="enhanced-input" required>
                                                         <option value="1">1 Hour</option>
                                                         <option value="6">6 Hours</option>
                                                         <option value="12">12 Hours</option>
                                                         <option value="24" selected>24 Hours (1 Day)</option>
                                                         <option value="72">72 Hours (3 Days)</option>
                                                         <option value="168">1 Week</option>
+                                                        <option value="720">1 Month (30 Days)</option>
+                                                        <option value="2160">3 Months (90 Days)</option>
+                                                        <option value="4320">6 Months (180 Days)</option>
+                                                        <option value="8760">1 Year (365 Days)</option>
+                                                        <option value="17520">2 Years (730 Days)</option>
+                                                        <option value="43800">5 Years</option>
+                                                        <option value="87600">10 Years</option>
+                                                        <option value="0">Forever (No Expiration)</option>
                                                     </select>
                                                     <small class="form-help">How long the recipient can access this credential</small>
                                                 </div>
@@ -4742,21 +4910,29 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                                 </span>
                                                                 <span class="send-expire">
                                                                     Expires: <?php echo date('M j, Y', strtotime($send['expires_at'])); ?>
-                                                                </span>
-                                                                <span class="send-views">
+                                                                </span>                                                                <span class="send-views">
                                                                     Views: <?php echo $send['view_count']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?>
                                                                 </span>
+                                                                <?php if ($send['has_password']): ?>
+                                                                    <span class="send-protection">
+                                                                        <i class="fas fa-lock"></i> Password Protected
+                                                                    </span>
+                                                                <?php endif; ?>
                                                                 <?php if ($send['type'] === 'file' && $send['file_size']): ?>
                                                                     <span class="send-size">
                                                                         Size: <?php echo number_format($send['file_size']); ?> bytes
                                                                     </span>
                                                                 <?php endif; ?>
                                                             </div>
-                                                        </div>
-                                                        <div class="send-actions">
+                                                        </div>                                                        <div class="send-actions">
                                                             <button class="btn btn-sm btn-secondary" onclick="copyAccessLink('<?php echo $send['access_token']; ?>')">
                                                                 <i class="fas fa-copy"></i> Copy Link
                                                             </button>
+                                                            <?php if ($send['has_password']): ?>
+                                                                <button class="btn btn-sm btn-info" onclick="viewSendPassword('<?php echo $send['id']; ?>')" id="viewPasswordBtn_<?php echo $send['id']; ?>">
+                                                                    <i class="fas fa-eye"></i> View Password
+                                                                </button>
+                                                            <?php endif; ?>
                                                             <form method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this send?')">
                                                                 <input type="hidden" name="action" value="delete_send">
                                                                 <input type="hidden" name="send_id" value="<?php echo $send['id']; ?>">

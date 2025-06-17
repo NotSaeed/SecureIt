@@ -362,13 +362,17 @@ class SendManager {
      * Create a credential delivery send for sharing vault items
      */
     public function createCredentialDelivery($userId, $vaultItemId, $recipientEmail, $options = []) {
-        try {
-            // Generate unique access token
+        try {            // Generate unique access token
             $accessToken = $this->generateAccessToken();
             
             // Calculate expiration based on hours
             $expiryHours = $options['expiry_hours'] ?? 24;
-            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            if ($expiryHours == 0) {
+                // Forever - set to 100 years from now
+                $expirationDate = date('Y-m-d H:i:s', strtotime('+100 years'));
+            } else {
+                $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            }
             
             // Get vault item data
             $vault = new Vault();
@@ -448,13 +452,17 @@ class SendManager {
      * Create a credential delivery send for sharing multiple vault items
      */
     public function createMultiCredentialDelivery($userId, $vaultItemIds, $options = []) {
-        try {
-            // Generate unique access token
+        try {            // Generate unique access token
             $accessToken = $this->generateAccessToken();
             
             // Calculate expiration based on hours
             $expiryHours = $options['expiry_hours'] ?? 24;
-            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            if ($expiryHours == 0) {
+                // Forever - set to 100 years from now
+                $expirationDate = date('Y-m-d H:i:s', strtotime('+100 years'));
+            } else {
+                $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            }
             
             // Get vault items data
             $vault = new Vault();
@@ -560,6 +568,27 @@ class SendManager {
               } catch (Exception $e) {
             error_log("SendManager::createMultiCredentialDelivery - " . $e->getMessage());
             throw $e;
+        }
+    }
+    
+    /**
+     * Get the password for a send (for the owner to view)
+     */
+    public function getSendPassword($sendId, $userId) {
+        try {
+            $sql = "SELECT access_password FROM sends WHERE id = :id AND user_id = :user_id";
+            $result = $this->db->fetchOne($sql, ['id' => $sendId, 'user_id' => $userId]);
+            
+            if (!$result || empty($result['access_password'])) {
+                return null;
+            }
+            
+            // Decrypt the password for display to the owner
+            return $this->encryptionHelper->decrypt($result['access_password']);
+            
+        } catch (Exception $e) {
+            error_log("SendManager::getSendPassword error: " . $e->getMessage());
+            return null;
         }
     }
 }
