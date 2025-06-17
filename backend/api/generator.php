@@ -4,7 +4,31 @@
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: http://localhost:3000');
+
+// Allow requests from extension and localhost
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost',
+    'https://localhost',
+    'chrome-extension://',
+    'moz-extension://'
+];
+
+$isAllowed = false;
+foreach ($allowedOrigins as $allowed) {
+    if (strpos($origin, $allowed) === 0) {
+        $isAllowed = true;
+        break;
+    }
+}
+
+if ($isAllowed || empty($origin)) {
+    header('Access-Control-Allow-Origin: ' . ($origin ?: '*'));
+} else {
+    header('Access-Control-Allow-Origin: http://localhost:3000');
+}
+
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');

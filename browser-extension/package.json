@@ -1,0 +1,25 @@
+{
+  "name": "secureit-browser-extension",
+  "version": "1.0.0",
+  "description": "SecureIt Password Manager Browser Extension",  "scripts": {
+    "setup": "node setup.js",
+    "build": "node build.js",
+    "package": "node package.js",
+    "dev": "echo 'Load the extension in developer mode from the browser-extension folder'",
+    "icons": "node create-icons.js"
+  },
+  "keywords": [
+    "password",
+    "manager",
+    "security",
+    "vault",
+    "generator",
+    "browser",
+    "extension"
+  ],
+  "author": "SecureIt Team",
+  "license": "MIT",
+  "devDependencies": {
+    "archiver": "^5.3.1"
+  }
+}

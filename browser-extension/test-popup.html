@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureIt Extension Test</title>
+    <link rel="stylesheet" href="popup/styles.css">
+    <style>
+        body { margin: 20px; }
+        .test-container { max-width: 400px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .test-output { background: #f5f5f5; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        .error { background: #fee; color: #c33; }
+        .success { background: #efe; color: #3c3; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>SecureIt Extension Test</h1>
+        
+        <div class="test-section">
+            <h2>Authentication Test</h2>
+            <button onclick="testAuth()">Test Auth</button>
+            <div id="auth-output" class="test-output"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Vault Items Test</h2>
+            <button onclick="testVault()">Test Vault</button>
+            <div id="vault-output" class="test-output"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Extension Popup Simulation</h2>
+            <div id="popup-container">
+                <!-- Login Section -->
+                <div id="login-section" class="section active">
+                    <div class="login-form">
+                        <h2>Sign In to SecureIt</h2>
+                        <input type="email" id="email" placeholder="Email" value="test@secureit.com">
+                        <input type="password" id="password" placeholder="Password" value="password123">
+                        <button onclick="simulateLogin()" class="primary-btn">Sign In</button>
+                    </div>
+                </div>
+                
+                <!-- Vault Section -->
+                <div id="vault-section" class="section">
+                    <div class="section-header">
+                        <h2>Vault</h2>
+                        <button class="icon-btn" title="Add Item">+</button>
+                    </div>
+                    <div class="search-box">
+                        <input type="text" placeholder="Search vault..." />
+                    </div>
+                    <div id="vault-items" class="vault-items">
+                        <!-- Items will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SecureItTest {
+            constructor() {
+                this.apiBase = 'http://localhost/SecureIt/backend/api';
+                this.currentUser = null;
+                this.vaultItems = [];
+            }
+
+            async makeRequest(endpoint, options = {}) {
+                const url = `${this.apiBase}${endpoint}`;
+                console.log('Making request to:', url, 'with options:', options);
+                
+                const config = {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                };
+
+                try {
+                    const response = await fetch(url, config);
+                    console.log('Response status:', response.status, response.statusText);
+                    
+                    const text = await response.text();
+                    console.log('Raw response:', text);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} - ${text}`);
+                    }
+                    
+                    const jsonResponse = JSON.parse(text);
+                    console.log('Parsed JSON response:', jsonResponse);
+                    return jsonResponse;
+                } catch (error) {
+                    console.error('Request failed:', error);
+                    throw error;
+                }
+            }
+
+            async login(email, password) {
+                try {
+                    const response = await this.makeRequest('/auth.php', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'login',
+                            email: email,
+                            password: password
+                        })
+                    });
+
+                    if (response.success) {
+                        this.currentUser = response.user;
+                        return true;
+                    } else {
+                        throw new Error(response.message || 'Login failed');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    throw error;
+                }
+            }
+
+            async loadVaultItems() {
+                try {
+                    console.log('Loading vault items...');
+                    const response = await this.makeRequest('/vault.php?action=list');
+                    console.log('Vault API response:', response);
+                    
+                    if (response.success) {
+                        this.vaultItems = response.items || [];
+                        console.log('Loaded vault items:', this.vaultItems.length, 'items');
+                        return this.vaultItems;
+                    } else {
+                        throw new Error(response.message || 'Failed to load vault items');
+                    }
+                } catch (error) {
+                    console.error('Failed to load vault items:', error);
+                    throw error;
+                }
+            }
+
+            renderVaultItems() {
+                const container = document.getElementById('vault-items');
+                
+                if (this.vaultItems.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p>No items in your vault yet</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = this.vaultItems.map(item => `
+                    <div class="vault-item" data-id="${item.id}">
+                        <div class="vault-item-header">
+                            <div class="vault-item-name">${item.name}</div>
+                            <div class="vault-item-type">${item.type}</div>
+                        </div>
+                        ${item.username ? `<div class="vault-item-username">${item.username}</div>` : ''}
+                    </div>
+                `).join('');
+            }
+
+            showSection(sectionId) {
+                // Hide all sections
+                document.querySelectorAll('.section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                
+                // Show target section
+                document.getElementById(sectionId).classList.add('active');
+            }
+        }
+
+        const app = new SecureItTest();
+
+        async function testAuth() {
+            const output = document.getElementById('auth-output');
+            try {
+                const result = await app.login('test@secureit.com', 'password123');
+                output.textContent = `Authentication successful: ${JSON.stringify(app.currentUser, null, 2)}`;
+                output.className = 'test-output success';
+            } catch (error) {
+                output.textContent = `Authentication failed: ${error.message}`;
+                output.className = 'test-output error';
+            }
+        }
+
+        async function testVault() {
+            const output = document.getElementById('vault-output');
+            try {
+                const items = await app.loadVaultItems();
+                output.textContent = `Vault items loaded: ${JSON.stringify(items, null, 2)}`;
+                output.className = 'test-output success';
+            } catch (error) {
+                output.textContent = `Vault loading failed: ${error.message}`;
+                output.className = 'test-output error';
+            }
+        }
+
+        async function simulateLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                await app.login(email, password);
+                await app.loadVaultItems();
+                app.renderVaultItems();
+                app.showSection('vault-section');
+                
+                console.log('Login and vault loading successful');
+            } catch (error) {
+                console.error('Simulation failed:', error);
+                alert('Login failed: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

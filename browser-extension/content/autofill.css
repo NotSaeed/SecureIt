@@ -1,0 +1,52 @@
+/* SecureIt Autofill Content Styles */
+
+.secureit-autofill-btn {
+    box-sizing: border-box !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+.secureit-autofill-btn:hover {
+    transform: scale(1.05) !important;
+}
+
+.secureit-autofill-menu {
+    box-sizing: border-box !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+.secureit-autofill-menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.secureit-autofill-menu::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+.secureit-autofill-menu::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.secureit-autofill-menu::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Override any site styles that might interfere */
+.secureit-autofill-btn,
+.secureit-autofill-menu {
+    all: initial !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+.secureit-autofill-btn * {
+    all: unset !important;
+}
+
+.secureit-autofill-menu * {
+    all: unset !important;
+    display: block !important;
+}

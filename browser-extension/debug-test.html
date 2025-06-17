@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureIt Extension Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; }
+        .error { background: #f8d7da; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #results {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>SecureIt Extension Debug Test</h1>
+    
+    <div class="test-section">
+        <h3>API Connectivity Test</h3>
+        <p>This will test if the SecureIt backend APIs are accessible from a browser extension context.</p>
+        <button onclick="testAuthAPI()">Test Auth API</button>
+        <button onclick="testVaultAPI()">Test Vault API</button>
+        <button onclick="testGeneratorAPI()">Test Generator API</button>
+        <button onclick="testSendAPI()">Test Send API</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="test-section">
+        <h3>Login Test</h3>
+        <p>Test login with your SecureIt credentials:</p>
+        <input type="email" id="email" placeholder="Email" style="margin: 5px; padding: 8px;">
+        <input type="password" id="password" placeholder="Password" style="margin: 5px; padding: 8px;">
+        <button onclick="testLogin()">Login</button>
+    </div>
+
+    <div id="results">
+        Test results will appear here...
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/SecureIt/backend/api';
+        const resultsDiv = document.getElementById('results');
+
+        function log(message) {
+            resultsDiv.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+        }
+
+        function clearResults() {
+            resultsDiv.textContent = '';
+        }
+
+        async function makeRequest(endpoint, options = {}) {
+            const url = `${API_BASE}${endpoint}`;
+            log(`Making request to: ${url}`);
+            
+            const config = {
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                },
+                ...options
+            };
+
+            try {
+                const response = await fetch(url, config);
+                log(`Response status: ${response.status} ${response.statusText}`);
+                
+                const data = await response.json();
+                log(`Response data: ${JSON.stringify(data, null, 2)}`);
+                return data;
+            } catch (error) {
+                log(`Request failed: ${error.message}`);
+                throw error;
+            }
+        }
+
+        async function testAuthAPI() {
+            log('\\n=== Testing Auth API ===');
+            try {
+                const response = await makeRequest('/auth.php', {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'check_session' })
+                });
+                log('Auth API test completed successfully');
+            } catch (error) {
+                log(`Auth API test failed: ${error.message}`);
+            }
+        }
+
+        async function testVaultAPI() {
+            log('\\n=== Testing Vault API ===');
+            try {
+                const response = await makeRequest('/vault.php?action=list');
+                if (response.success) {
+                    log(`Found ${response.items?.length || 0} vault items`);
+                    response.items?.forEach((item, index) => {
+                        log(`Item ${index + 1}: ${item.name} (${item.type})`);
+                    });
+                }
+                log('Vault API test completed successfully');
+            } catch (error) {
+                log(`Vault API test failed: ${error.message}`);
+            }
+        }
+
+        async function testGeneratorAPI() {
+            log('\\n=== Testing Generator API ===');
+            try {
+                const response = await makeRequest('/generator.php', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'generate_password',
+                        length: 12,
+                        options: {
+                            uppercase: true,
+                            lowercase: true,
+                            numbers: true,
+                            symbols: false
+                        }
+                    })
+                });
+                if (response.success) {
+                    log(`Generated password: ${response.password}`);
+                }
+                log('Generator API test completed successfully');
+            } catch (error) {
+                log(`Generator API test failed: ${error.message}`);
+            }
+        }
+
+        async function testSendAPI() {
+            log('\\n=== Testing Send API ===');
+            try {
+                const response = await makeRequest('/send.php?action=list');
+                if (response.success) {
+                    log(`Found ${response.items?.length || 0} send items`);
+                }
+                log('Send API test completed successfully');
+            } catch (error) {
+                log(`Send API test failed: ${error.message}`);
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                log('Please enter both email and password');
+                return;
+            }
+
+            log('\\n=== Testing Login ===');
+            try {
+                const response = await makeRequest('/auth.php', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'login',
+                        email: email,
+                        password: password
+                    })
+                });
+                
+                if (response.success) {
+                    log('Login successful! You can now test the vault API.');
+                } else {
+                    log(`Login failed: ${response.message}`);
+                }
+            } catch (error) {
+                log(`Login test failed: ${error.message}`);
+            }
+        }
+
+        // Auto-test on load
+        log('SecureIt Extension Debug Test loaded');
+        log('Click buttons above to test API connectivity');
+    </script>
+</body>
+</html>
