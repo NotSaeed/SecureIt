@@ -722,6 +722,21 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             color: var(--primary);
         }
 
+        .btn.disabled,
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn.disabled:hover,
+        .btn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
         .btn-success {
             background: linear-gradient(135deg, var(--success), var(--secondary));
             color: var(--white);
@@ -746,7 +761,24 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-weight: 600;
         }
 
-        /* Forms */
+        .info-box p {
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--gray);
+        }
+
+        .multiple-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        .textarea-counter {
         .form-group {
             margin-bottom: 1.5rem;
         }        .form-label {
@@ -4447,6 +4479,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                             <?php endif; ?>
                                                         </div>
                                                         <small class="form-help">Select multiple vault items to share in one delivery</small>
+                                                        <div class="multiple-actions">
+                                                            <button type="button" class="btn btn-secondary btn-sm" onclick="selectAllItems()">
+                                                                <i class="fas fa-check-square"></i> Select All
+                                                            </button>
+                                                            <button type="button" class="btn btn-secondary btn-sm" onclick="deselectAllItems()">
+                                                                <i class="fas fa-square"></i> Deselect All
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
 
