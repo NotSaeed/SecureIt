@@ -865,18 +865,17 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
             text-align: center;
-        }
-
-        .stat-number {
+        }        .stat-number {
             font-size: 2rem;
             font-weight: 700;
-            color: var(--primary);
+            color: white;
             margin-bottom: 0.5rem;
         }
 
         .stat-label {
-            color: var(--gray);
+            color: white;
             font-size: 0.875rem;
+            opacity: 0.9;
         }
 
         /* Vault Items */
@@ -3572,6 +3571,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             z-index: 1;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             letter-spacing: -0.05em;
+            color: white;
         }        .stat-label {
             font-size: 1.125rem;
             opacity: 0.95;
@@ -3581,6 +3581,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            color: white;
         }
 
         .stat-label i {
