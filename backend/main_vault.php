@@ -305,14 +305,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => false, 'message' => 'Invalid request or not logged in']);
                 exit();
             }
-            break;
-              case 'create_credential_delivery':
-            if ($isLoggedIn) {                try {
+            break;              case 'create_credential_delivery':
+            if ($isLoggedIn) {
+                // Add debugging
+                error_log("Credential delivery form submitted");
+                error_log("POST data: " . print_r($_POST, true));
+                
+                try {
                     $sendManager = new SendManager();
                     
                     // Determine selection mode and get vault items
                     $selectionMode = $_POST['selection_mode'] ?? 'single';
                     $vaultItemIds = [];
+                    
+                    error_log("Selection mode: " . $selectionMode);
                     
                     switch ($selectionMode) {
                         case 'single':
@@ -342,6 +348,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         default:
                             throw new Exception('Invalid selection mode');
                     }
+                    
+                    error_log("Vault item IDs: " . print_r($vaultItemIds, true));
                       // Build options array
                     $options = [
                         'message' => trim($_POST['message'] ?? ''),
@@ -350,19 +358,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
                         'selection_mode' => $selectionMode
                     ];
+                    
+                    error_log("Options: " . print_r($options, true));
                       $result = $sendManager->createMultiCredentialDelivery(
                         $_SESSION['user_id'],
                         $vaultItemIds,
                         $options
                     );
                     
-                    $_SESSION['send_success_link'] = $result['access_link'];
+                    error_log("Result: " . print_r($result, true));
+                      $_SESSION['send_success_link'] = $result['access_link'];
                     $_SESSION['message'] = "Credential delivery created successfully!";
                     $_SESSION['message_type'] = 'success';
                     header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send&credential_success=1');
                     exit();
                     
                 } catch (Exception $e) {
+                    error_log("Credential delivery error: " . $e->getMessage());
                     $_SESSION['message'] = 'Failed to create credential delivery: ' . $e->getMessage();
                     $_SESSION['message_type'] = 'error';
                     header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');
@@ -3868,10 +3880,17 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
 
         .send-action-card.secondary::before {
             background: linear-gradient(135deg, #6b7280, #374151);
+        }        .send-action-card.success::before {
+            background: linear-gradient(135deg, #10b981, #059669);
         }
 
-        .send-action-card.success::before {
-            background: linear-gradient(135deg, #10b981, #059669);
+        .send-action-card.active {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .send-action-card.active::before {
+            opacity: 1;
         }
 
         .action-icon {
@@ -4055,13 +4074,19 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                         <div class="alert alert-success">
                             <i class="fas fa-check-circle"></i>
                             <?= htmlspecialchars($success) ?>
-                            
-                            <?php if ($sendSuccessLink): ?>
+                              <?php if ($sendSuccessLink): ?>
                                 <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
                                     <strong>Share this secure link:</strong><br>
                                     <div style="display: flex; align-items: center; margin-top: 8px;">
                                         <input type="text" 
-                                               value="http://localhost/SecureIt/backend/access_send.php?link=<?= htmlspecialchars($sendSuccessLink) ?>" 
+                                               value="<?php 
+                                                   // Check if this is a credential delivery
+                                                   if (isset($_GET['credential_success'])) {
+                                                       echo 'http://localhost/SecureIt/backend/credential_access.php?token=' . htmlspecialchars($sendSuccessLink);
+                                                   } else {
+                                                       echo 'http://localhost/SecureIt/backend/access_send.php?link=' . htmlspecialchars($sendSuccessLink);
+                                                   }
+                                               ?>" 
                                                readonly 
                                                id="sendLink"
                                                style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; font-family: monospace; font-size: 12px;">
@@ -4853,8 +4878,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                             <span class="badge badge-warning"><i class="fas fa-ban"></i> Revokable</span>
                                         </div>
                                     </div>
-                                    <div class="card-body">
-                                        <form method="POST" id="credentialDeliveryForm" class="enhanced-form">
+                                    <div class="card-body">                                        <form method="POST" id="credentialDeliveryForm" class="enhanced-form">
                                             <input type="hidden" name="action" value="create_credential_delivery">
                                               <div class="form-section">
                                                 <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Items</h4>
@@ -5088,12 +5112,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                     </div>
                                                 </div>
                                             </div>
-                                            
-                                            <div class="form-actions">
+                                              <div class="form-actions">
                                                 <button type="button" class="btn btn-secondary" onclick="clearCredentialForm()">
                                                     <i class="fas fa-eraser"></i> Clear Form
-                                                </button>
-                                                <button type="submit" class="btn btn-primary btn-enhanced">
+                                                </button>                                                <button type="submit" class="btn btn-primary btn-enhanced">
                                                     <i class="fas fa-share-alt"></i> Create Credential Delivery
                                                     <span class="btn-animation"></span>
                                                 </button>
@@ -5206,49 +5228,31 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                 </div>
                             </div>
                         </div>                    <?php elseif ($currentSection === 'security'): ?>
-                        <!-- Enhanced Security Center -->
+                        <!-- Security Center -->
                         <div class="card enhanced-card">
                             <div class="card-header gradient-header">
                                 <h2 class="card-title">Security Center</h2>
-                                <p class="card-description">Monitor your security posture and access powerful security tools and APIs.</p>
+                                <p class="card-description">Access powerful security tools and APIs.</p>
                             </div>
                             <div class="card-body">
-                                <div class="stats-grid">
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--success);">85</div>
-                                        <div class="stat-label">Security Score</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--warning);">3</div>
-                                        <div class="stat-label">Weak Passwords</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--danger);">2</div>
-                                        <div class="stat-label">Reused Passwords</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--info);">0</div>
-                                        <div class="stat-label">Compromised</div>
-                                    </div>
-                                </div>
-                                  <!-- Security Tools Section -->
+                                <!-- Security Tools Section -->
                                 <div style="margin-top: 2rem;">
                                     <h3 style="margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 600;">Security Tools & APIs</h3>
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; max-width: 800px; margin: 0 auto;">
                                         <!-- Brute Force Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
-                                                <h4 style="margin: 0; color: #991b1b; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-hammer"></i> Brute Force Analyzer
+                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: none; box-shadow: 0 10px 25px rgba(239, 68, 68, 0.15);">
+                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2); padding: 1.5rem;">
+                                                <h4 style="margin: 0; color: #991b1b; display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem;">
+                                                    <i class="fas fa-hammer" style="font-size: 1.25rem;"></i> Brute Force Analyzer
                                                 </h4>
                                             </div>
-                                            <div class="card-body">
-                                                <p style="color: #991b1b; margin-bottom: 1rem;">Test password strength against brute force attacks and get security recommendations.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-danger" onclick="openBruteForceAnalyzer()" style="flex: 1;">
-                                                        <i class="fas fa-shield-virus"></i> Analyze
+                                            <div class="card-body" style="padding: 1.5rem;">
+                                                <p style="color: #991b1b; margin-bottom: 1.5rem; line-height: 1.5;">Test password strength against brute force attacks and get detailed security recommendations.</p>
+                                                <div style="display: flex; gap: 0.75rem;">
+                                                    <button class="btn btn-danger" onclick="openBruteForceAnalyzer()" style="flex: 1; padding: 0.875rem 1rem; font-weight: 600;">
+                                                        <i class="fas fa-shield-virus"></i> Analyze Password
                                                     </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewBruteForceAPI()" title="View API">
+                                                    <button class="btn btn-secondary btn-sm" onclick="viewBruteForceAPI()" title="View API Documentation" style="padding: 0.875rem;">
                                                         <i class="fas fa-code"></i>
                                                     </button>
                                                 </div>
@@ -5256,116 +5260,22 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- VirusTotal Integration -->
-                                        <div class="card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(59, 130, 246, 0.2);">
-                                                <h4 style="margin: 0; color: #1e40af; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-virus-slash"></i> VirusTotal API
+                                        <div class="card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border: none; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.15);">
+                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding: 1.5rem;">
+                                                <h4 style="margin: 0; color: #1e40af; display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem;">
+                                                    <i class="fas fa-virus-slash" style="font-size: 1.25rem;"></i> VirusTotal API
                                                 </h4>
                                             </div>
-                                            <div class="card-body">
-                                                <p style="color: #1e40af; margin-bottom: 1rem;">Scan files and URLs for malware using VirusTotal's comprehensive database.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-info" onclick="openVirusTotalScanner()" style="flex: 1;">
-                                                        <i class="fas fa-scanner"></i> Scan
+                                            <div class="card-body" style="padding: 1.5rem;">
+                                                <p style="color: #1e40af; margin-bottom: 1.5rem; line-height: 1.5;">Scan files and URLs for malware using VirusTotal's comprehensive threat intelligence database.</p>
+                                                <div style="display: flex; gap: 0.75rem;">
+                                                    <button class="btn btn-info" onclick="openVirusTotalScanner()" style="flex: 1; padding: 0.875rem 1rem; font-weight: 600;">
+                                                        <i class="fas fa-scanner"></i> Scan Files/URLs
                                                     </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewVirusTotalAPI()" title="View API">
+                                                    <button class="btn btn-secondary btn-sm" onclick="viewVirusTotalAPI()" title="View API Documentation" style="padding: 0.875rem;">
                                                         <i class="fas fa-code"></i>
                                                     </button>
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Password Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(245, 158, 11, 0.2);">
-                                                <h4 style="margin: 0; color: #92400e; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-search"></i> Password Analysis
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #92400e; margin-bottom: 1rem;">Analyze password strength and get security recommendations.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-warning" onclick="analyzePasswords()" style="flex: 1;">
-                                                        <i class="fas fa-analytics"></i> Analyze
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewPasswordAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Breach Detection -->
-                                        <div class="card" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(147, 51, 234, 0.2);">
-                                                <h4 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-shield-virus"></i> Breach Detection
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #581c87; margin-bottom: 1rem;">Check if your accounts have been compromised in data breaches.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn" style="background: #9333ea; color: white; flex: 1;" onclick="checkBreaches()">
-                                                        <i class="fas fa-search"></i> Check
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewBreachAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Two-Factor Authentication -->
-                                        <div class="card" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(16, 185, 129, 0.2);">
-                                                <h4 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-mobile-alt"></i> 2FA Setup
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #065f46; margin-bottom: 1rem;">Set up Two-Factor Authentication for enhanced security.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn btn-success" onclick="setup2FA()" style="flex: 1;">
-                                                        <i class="fas fa-shield-check"></i> Setup
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="view2FAAPI()" title="View API">
-                                                        <i class="fas fa-code"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- API Management -->
-                                        <div class="card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
-                                                <h4 style="margin: 0; color: #3730a3; display: flex; align-items: center; gap: 0.5rem;">
-                                                    <i class="fas fa-cogs"></i> API Management
-                                                </h4>
-                                            </div>
-                                            <div class="card-body">
-                                                <p style="color: #3730a3; margin-bottom: 1rem;">Manage API keys and access tokens for security services.</p>
-                                                <div style="display: flex; gap: 0.5rem;">
-                                                    <button class="btn" style="background: #6366f1; color: white; flex: 1;" onclick="manageAPIs()">
-                                                        <i class="fas fa-key"></i> Manage
-                                                    </button>
-                                                    <button class="btn btn-secondary btn-sm" onclick="viewAPIDocumentation()" title="Documentation">
-                                                        <i class="fas fa-book"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Recent Security Events -->
-                                <div style="margin-top: 2rem;">
-                                    <h3 style="margin-bottom: 1rem; font-size: 1.25rem; font-weight: 600;">Recent Security Events</h3>
-                                    <div class="card" style="background: #f8fafc;">
-                                        <div class="card-body">
-                                            <div style="text-align: center; padding: 2rem; color: var(--gray);">
-                                                <i class="fas fa-shield-check" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                                                <p>No recent security events to display.</p>
-                                                <small>Security events and alerts will appear here.</small>
                                             </div>
                                         </div>
                                     </div>
@@ -7341,17 +7251,34 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             }
         }        // Send Section Functions
         function switchSendTab(tab) {
-            // Update tab buttons
+            // Update tab buttons (both send-tab-button and send-action-card)
             document.querySelectorAll('.send-tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+            document.querySelectorAll('.send-action-card').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to corresponding button
+            const tabButton = document.querySelector(`[data-tab="${tab}"]`);
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
             
             // Update content
             document.querySelectorAll('.send-tab-content').forEach(content => {
                 content.classList.remove('active');
             });
-            document.getElementById(`${tab}Tab`).classList.add('active');
+            
+            const targetTab = document.getElementById(`${tab}Tab`);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            
+            // Initialize selection mode handlers for credential tab
+            if (tab === 'credential') {
+                initializeCredentialSelectionMode();
+            }
         }
         
         function initializeSendSection() {
@@ -7413,6 +7340,77 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 counter.textContent = textarea.value.length;
             }        }
         
+        // Credential delivery functions
+        function initializeCredentialSelectionMode() {
+            const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+            selectionModeRadios.forEach(radio => {
+                radio.addEventListener('change', toggleCredentialSelection);
+            });
+            
+            // Initialize password checkbox handler
+            const passwordCheckbox = document.getElementById('require_password_credential');
+            if (passwordCheckbox) {
+                passwordCheckbox.addEventListener('change', toggleCredentialPassword);
+            }
+            
+            // Initialize message counter
+            const messageTextarea = document.getElementById('credential_message');
+            if (messageTextarea) {
+                messageTextarea.addEventListener('input', updateCredentialMessageCounter);
+            }
+            
+            // Initialize with current selection
+            toggleCredentialSelection();
+        }
+        
+        function toggleCredentialSelection() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked').value;
+            
+            // Hide all selection sections
+            document.getElementById('single_selection').style.display = 'none';
+            document.getElementById('multiple_selection').style.display = 'none';
+            document.getElementById('all_selection').style.display = 'none';
+            
+            // Show selected section
+            switch(selectedMode) {
+                case 'single':
+                    document.getElementById('single_selection').style.display = 'block';
+                    break;
+                case 'multiple':
+                    document.getElementById('multiple_selection').style.display = 'block';
+                    break;
+                case 'all':
+                    document.getElementById('all_selection').style.display = 'block';
+                    break;
+            }
+        }
+        
+        function selectAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function clearAllItems() {
+            const checkboxes = document.querySelectorAll('input[name="vault_items[]"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        function toggleCredentialPassword() {
+            const enablePassword = document.getElementById('require_password_credential').checked;
+            const passwordSection = document.getElementById('credential_password_section');
+            
+            if (enablePassword) {
+                passwordSection.style.display = 'block';
+            } else {
+                passwordSection.style.display = 'none';
+                document.getElementById('credential_access_password').value = '';
+            }
+        }
+
         // Enhanced file handling functions
         function handleFileSelection(input) {
             const file = input.files[0];
@@ -8346,15 +8344,102 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             if (modal) {
                 modal.remove();
             }
-        }
-
-        function copyAccessLink(token) {
+        }        function copyAccessLink(token) {
             const link = window.location.origin + window.location.pathname.replace('main_vault.php', '') + 'send_access.php?token=' + token;
             navigator.clipboard.writeText(link).then(() => {
                 showNotification('Access link copied to clipboard!', 'success');
             }).catch(() => {
                 showNotification('Failed to copy link', 'error');
-            });
+            });        }        // Initialize page when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing...');
+            
+            // Initialize send section if it exists
+            if (document.getElementById('secureSendForm')) {
+                initializeSendSection();
+            }
+            
+            // Initialize credential selection mode directly
+            const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+            if (selectionModeRadios.length > 0) {
+                console.log('Found selection mode radios:', selectionModeRadios.length);
+                selectionModeRadios.forEach(radio => {
+                    radio.addEventListener('change', function() {
+                        console.log('Selection mode changed to:', this.value);
+                        toggleCredentialSelection();
+                    });
+                });
+                
+                // Initialize password checkbox
+                const passwordCheckbox = document.getElementById('require_password_credential');
+                if (passwordCheckbox) {
+                    passwordCheckbox.addEventListener('change', function() {
+                        toggleCredentialPassword();
+                    });
+                }
+                
+                // Initialize with current selection
+                toggleCredentialSelection();
+            }
+            
+            // Initialize text counter for credential message
+            const credentialMessage = document.getElementById('credential_message');
+            if (credentialMessage) {
+                credentialMessage.addEventListener('input', updateCredentialMessageCounter);
+                updateCredentialMessageCounter(); // Initial count
+            }            // Simple form submission handler
+            const credentialForm = document.getElementById('credentialDeliveryForm');
+            if (credentialForm) {
+                credentialForm.addEventListener('submit', function(e) {
+                    console.log('Form submit event triggered');
+                    
+                    // Basic validation only
+                    const selectionMode = document.querySelector('input[name="selection_mode"]:checked')?.value || 'single';
+                    
+                    if (selectionMode === 'single') {
+                        const vaultItemId = document.getElementById('vault_item_id')?.value;
+                        if (!vaultItemId) {
+                            e.preventDefault();
+                            alert('Please select a vault item to share');
+                            return false;
+                        }
+                    }
+                    
+                    console.log('Form validation passed, submitting...');
+                });
+            }
+        });
+
+        // Validate credential form before submission
+        function validateCredentialForm() {
+            const selectionMode = document.querySelector('input[name="selection_mode"]:checked').value;
+            
+            // Validate based on selection mode
+            if (selectionMode === 'single') {
+                const vaultItemId = document.getElementById('vault_item_id').value;
+                if (!vaultItemId) {
+                    showNotification('Please select a vault item to share', 'error');
+                    return false;
+                }
+            } else if (selectionMode === 'multiple') {
+                const checkedItems = document.querySelectorAll('input[name="vault_items[]"]:checked');
+                if (checkedItems.length === 0) {
+                    showNotification('Please select at least one vault item to share', 'error');
+                    return false;
+                }
+            }
+
+            // Validate password if enabled
+            const passwordEnabled = document.getElementById('require_password_credential').checked;
+            if (passwordEnabled) {
+                const password = document.getElementById('credential_access_password').value;
+                if (!password || password.length < 4) {
+                    showNotification('Access password must be at least 4 characters long', 'error');
+                    return false;
+                }
+            }
+
+            return true;
         }
     </script>
 </body>
