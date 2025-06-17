@@ -1,6 +1,7 @@
 // SecureIt Extension Popup Controller
 class SecureItPopup {
     constructor() {
+        console.log('SecureIt Extension Popup initializing...');
         this.apiBase = 'http://localhost/SecureIt/backend/api';
         this.currentUser = null;
         this.currentSection = 'vault';
@@ -51,7 +52,11 @@ class SecureItPopup {
             }
         };
         
-        this.init();
+        // Initialize the popup
+        this.init().catch(error => {
+            console.error('Failed to initialize SecureIt popup:', error);
+            this.showError('Failed to initialize extension: ' + error.message);
+        });
     }
 
     async init() {
@@ -342,17 +347,15 @@ class SecureItPopup {
         
         const container = document.querySelector('.container') || document.body;
         container.insertBefore(notification, container.firstChild);
-    }
-
-    async saveAnalyzedPassword(password, url) {
+    }    async saveAnalyzedPassword(password, url) {
         // Switch to vault section and pre-fill add item form
         this.switchSection('vault');
         this.showAddItemModal();
         
-        // Pre-fill the form
+        // Pre-fill the form with correct field IDs
         document.getElementById('item-name').value = this.extractDomainFromUrl(url);
-        document.getElementById('website-url').value = url;
-        document.getElementById('password').value = password;
+        document.getElementById('item-url').value = url;
+        document.getElementById('item-password').value = password;
     }
 
     analyzePasswordStrength(password) {
@@ -602,9 +605,7 @@ class SecureItPopup {
             modal.classList.remove('active');
         });
         this.clearModalForms();
-    }
-
-    clearModalForms() {
+    }    clearModalForms() {
         // Clear add item form
         document.getElementById('item-name').value = '';
         document.getElementById('item-username').value = '';
@@ -617,9 +618,7 @@ class SecureItPopup {
         document.getElementById('send-content').value = '';
         document.getElementById('send-password').value = '';
         document.getElementById('send-max-views').value = '';
-    }
-
-    async saveVaultItem() {
+    }async saveVaultItem() {
         const name = document.getElementById('item-name').value.trim();
         const type = document.getElementById('item-type').value;
         const username = document.getElementById('item-username').value.trim();
@@ -632,19 +631,42 @@ class SecureItPopup {
             return;
         }
 
+        // Prepare data based on item type
+        let data = {};
+        if (type === 'login') {
+            data = {
+                username: username,
+                password: password,
+                notes: notes
+            };
+        } else if (type === 'note') {
+            data = {
+                notes: notes
+            };
+        } else {
+            // For other types, include basic fields
+            data = {
+                username: username,
+                password: password,
+                notes: notes
+            };
+        }
+
         try {
+            console.log('Saving vault item:', { name, type, data, url });
+            
             const response = await this.makeRequest('/vault.php', {
                 method: 'POST',
                 body: JSON.stringify({
-                    action: 'create',
-                    type: type,
-                    name: name,
-                    username: username,
-                    password: password,
-                    url: url,
-                    notes: notes
+                    item_name: name,
+                    item_type: type,
+                    data: data,
+                    website_url: url || null,
+                    folder_id: null
                 })
             });
+
+            console.log('Vault save response:', response);
 
             if (response.success) {
                 this.closeModals();
@@ -655,7 +677,7 @@ class SecureItPopup {
             }
         } catch (error) {
             console.error('Save error:', error);
-            this.showError('Failed to save item');
+            this.showError('Failed to save item: ' + error.message);
         }
     }
 
@@ -950,16 +972,14 @@ class SecureItPopup {
                 this.showSuccess('Access URL copied to clipboard');
             }
         }
-    }
-
-    async deleteVaultItem(itemId) {
+    }    async deleteVaultItem(itemId) {
+        if (!confirm('Are you sure you want to delete this item?')) {
+            return;
+        }
+        
         try {
-            const response = await this.makeRequest('/vault.php', {
-                method: 'POST',
-                body: JSON.stringify({
-                    action: 'delete',
-                    id: itemId
-                })
+            const response = await this.makeRequest(`/vault.php?id=${itemId}`, {
+                method: 'DELETE'
             });
             
             if (response.success) {
@@ -970,7 +990,7 @@ class SecureItPopup {
             }
         } catch (error) {
             console.error('Delete error:', error);
-            this.showError('Failed to delete item');
+            this.showError('Failed to delete item: ' + error.message);
         }
     }
 
@@ -1056,6 +1076,11 @@ class SecureItPopup {
 }
 
 // Initialize the popup when DOM is loaded
+let secureItPopup;
 document.addEventListener('DOMContentLoaded', () => {
-    new SecureItPopup();
+    secureItPopup = new SecureItPopup();
+    console.log('SecureIt Popup initialized:', secureItPopup);
+    
+    // Make it globally accessible for debugging
+    window.secureItPopup = secureItPopup;
 });
