@@ -299,79 +299,39 @@ class SecureItPopup {
         } catch (error) {
             console.error('Failed to load send items:', error);
         }
-    }
-
-    async checkAnalyzedPassword() {
+    }    async checkAnalyzedPassword() {
         try {
-            // Check if there's password data from the analyzer
-            const data = await this.storage.get(['analyzedPassword']);
-            if (data.analyzedPassword) {
-                const { password, url, timestamp } = data.analyzedPassword;
+            // Check if there's a generator request from the analyzer
+            const data = await this.storage.get(['generatorRequest']);
+            
+            if (data.generatorRequest) {
+                const { url, fieldInfo, timestamp } = data.generatorRequest;
                 
                 // Check if the data is recent (within 5 minutes)
                 if (Date.now() - timestamp < 5 * 60 * 1000) {
-                    // Show password analyzer info
-                    this.showPasswordAnalyzerInfo(password, url);
+                    // Switch to generator section and generate password
+                    this.switchSection('generator');
+                    await this.generateCredential();
+                    this.showGeneratorNotification(url, fieldInfo);
                 }
                 
                 // Clean up the stored data
-                await this.storage.remove(['analyzedPassword']);
+                await this.storage.remove(['generatorRequest']);
             }
         } catch (error) {
             console.error('Error checking analyzed password:', error);
         }
-    }
-
-    showPasswordAnalyzerInfo(password, url) {
-        // Create a notification or modal to show password analysis
-        const notification = document.createElement('div');
-        notification.className = 'password-analyzer-notification';
-        notification.innerHTML = `
-            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 10px; position: relative;">
-                <button onclick="this.parentElement.remove()" style="position: absolute; top: 5px; right: 10px; background: none; border: none; font-size: 18px; cursor: pointer;">&times;</button>
-                <h4 style="margin: 0 0 10px 0; color: #495057;">Password Analysis</h4>
-                <p style="margin: 5px 0; font-size: 14px;"><strong>Website:</strong> ${url}</p>
-                <p style="margin: 5px 0; font-size: 14px;"><strong>Password:</strong> ${'*'.repeat(password.length)}</p>
-                <div style="margin-top: 10px;">
-                    <button onclick="secureItPopup.saveAnalyzedPassword('${password}', '${url}')" 
-                            style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
-                        Save to Vault
-                    </button>
-                    <button onclick="secureItPopup.analyzePasswordStrength('${password}')" 
-                            style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                        Analyze Strength
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        const container = document.querySelector('.container') || document.body;
-        container.insertBefore(notification, container.firstChild);
-    }    async saveAnalyzedPassword(password, url) {
-        // Switch to vault section and pre-fill add item form
-        this.switchSection('vault');
-        this.showAddItemModal();
-        
-        // Pre-fill the form with correct field IDs
-        document.getElementById('item-name').value = this.extractDomainFromUrl(url);
-        document.getElementById('item-url').value = url;
-        document.getElementById('item-password').value = password;
-    }
-
-    analyzePasswordStrength(password) {
-        // Switch to generator section to show analysis
-        this.switchSection('generator');
-        
-        // You could add password strength analysis display here
-        this.showSuccess(`Password analysis completed for ${password.length}-character password`);
-    }
-
-    extractDomainFromUrl(url) {
+    }      extractDomainFromUrl(url) {
+        if (!url) return '';
         try {
-            const urlObj = new URL(url);
-            return urlObj.hostname.replace(/^www\./, '');
+            // Handle URLs that don't start with protocol
+            const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+            const urlObj = new URL(fullUrl);
+            return urlObj.hostname.replace(/^www\./, '').toLowerCase();
         } catch (e) {
-            return url;
+            // Fallback: try to extract domain from string
+            const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/);
+            return match ? match[1].toLowerCase() : '';
         }
     }
 

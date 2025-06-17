@@ -74,11 +74,15 @@ class SecureItPasswordAnalyzer {
 
             .secureit-feedback-circle.strong {
                 background-color: #28a745;
-            }
-
-            .secureit-feedback-circle.vault-match {
+            }            .secureit-feedback-circle.vault-match {
                 background-color: #6f42c1;
                 animation: pulse-purple 2s infinite;
+            }
+
+            .secureit-feedback-circle.password-reuse {
+                background-color: #e74c3c;
+                animation: pulse-red-urgent 1.5s infinite;
+                border-color: #c0392b;
             }
 
             @keyframes pulse-red {
@@ -91,12 +95,16 @@ class SecureItPasswordAnalyzer {
                 0% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0.7); }
                 70% { box-shadow: 0 0 0 10px rgba(253, 126, 20, 0); }
                 100% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0); }
-            }
-
-            @keyframes pulse-purple {
+            }            @keyframes pulse-purple {
                 0% { box-shadow: 0 0 0 0 rgba(111, 66, 193, 0.7); }
                 70% { box-shadow: 0 0 0 10px rgba(111, 66, 193, 0); }
                 100% { box-shadow: 0 0 0 0 rgba(111, 66, 193, 0); }
+            }
+
+            @keyframes pulse-red-urgent {
+                0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.8); }
+                50% { box-shadow: 0 0 0 8px rgba(231, 76, 60, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
             }
         `;
         document.head.appendChild(style);
@@ -170,11 +178,10 @@ class SecureItPasswordAnalyzer {
 
         if (!passwordField.value) {
             return;
-        }
-
-        // Create circle
+        }        // Create circle
         this.currentCircle = document.createElement('div');
         this.currentCircle.className = 'secureit-feedback-circle';
+        this.currentCircle.title = 'Click to generate new password';
         
         // Position the circle
         this.positionCircle(passwordField);
@@ -196,22 +203,57 @@ class SecureItPasswordAnalyzer {
 
         this.currentCircle.style.left = `${rect.right + scrollLeft + 5}px`;
         this.currentCircle.style.top = `${rect.top + scrollTop + (rect.height / 2) - 9}px`;
-    }
-
-    async analyzePassword(passwordField) {
+    }    async analyzePassword(passwordField) {
         if (!passwordField.value) {
             this.removeFeedbackElements();
             return;
-        }
-
-        try {
+        }        try {
             // Check if password is in vault first
             const vaultCheck = await this.checkPasswordInVault(passwordField.value);
+            console.log('SecureIt Vault Check Result:', vaultCheck);
+            console.log('Current URL:', window.location.href);
+            console.log('Current Domain:', this.extractDomainFromUrl(window.location.href));
             
             if (vaultCheck.in_vault) {
-                this.updateCircle('vault-match');
-                this.showMessage(passwordField, `Used in vault: ${vaultCheck.matched_items[0]?.name || 'Unknown'}`, 'vault-match');
-                return;
+                // Check if password is used for a different URL (password reuse)
+                const currentDomain = this.extractDomainFromUrl(window.location.href);
+                const otherDomainItems = vaultCheck.matched_items.filter(item => {
+                    const itemDomain = this.extractDomainFromUrl(item.url || '');
+                    return itemDomain && itemDomain !== currentDomain;
+                });
+
+                if (otherDomainItems.length > 0) {
+                    // Password is reused across different sites - show warning
+                    const otherSites = otherDomainItems
+                        .map(item => this.extractDomainFromUrl(item.url || ''))
+                        .filter(domain => domain)
+                        .slice(0, 3); // Show max 3 other sites
+                    
+                    const reuseCount = otherDomainItems.length;
+                    let message;
+                    
+                    if (reuseCount === 1) {
+                        message = `⚠️ Also used on: ${otherSites[0]}`;
+                    } else if (reuseCount === 2) {
+                        message = `⚠️ Also used on: ${otherSites.join(', ')}`;
+                    } else {
+                        message = `⚠️ Used on ${reuseCount} other sites: ${otherSites.join(', ')}${reuseCount > 3 ? '...' : ''}`;
+                    }
+                    
+                    this.updateCircle('password-reuse');
+                    this.showMessage(passwordField, message, 'password-reuse');
+                    return;
+                } else {
+                    // Password exists for same domain - less concerning
+                    const sameDomainItem = vaultCheck.matched_items.find(item => {
+                        const itemDomain = this.extractDomainFromUrl(item.url || '');
+                        return itemDomain === currentDomain;
+                    });
+                    
+                    this.updateCircle('vault-match');
+                    this.showMessage(passwordField, `✓ Saved in vault: ${sameDomainItem?.name || 'Unknown'}`, 'vault-match');
+                    return;
+                }
             }
 
             // Check if password is leaked
@@ -219,7 +261,7 @@ class SecureItPasswordAnalyzer {
             
             if (isLeaked) {
                 this.updateCircle('leaked');
-                this.showMessage(passwordField, 'Password found in data breaches!', 'leaked');
+                this.showMessage(passwordField, '🚨 Found in data breaches!', 'leaked');
                 return;
             }
 
@@ -233,28 +275,34 @@ class SecureItPasswordAnalyzer {
             this.updateCircle('weak');
             this.showMessage(passwordField, 'Analysis error', 'weak');
         }
-    }
-
-    async checkPasswordInVault(password) {
+    }    async checkPasswordInVault(password) {
         try {
+            console.log('SecureIt: Checking password in vault, API base:', this.apiBase);
+            const requestBody = {
+                action: 'check_password_in_vault',
+                password: password,
+                url: window.location.href
+            };
+            console.log('SecureIt: Request body:', requestBody);
+            
             const response = await fetch(`${this.apiBase}/extension.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 credentials: 'include',
-                body: JSON.stringify({
-                    action: 'check_password_in_vault',
-                    password: password,
-                    url: window.location.href
-                })
+                body: JSON.stringify(requestBody)
             });
 
+            console.log('SecureIt: Response status:', response.status, response.statusText);
+
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                throw new Error(`Network response was not ok: ${response.status}`);
             }
 
-            return await response.json();
+            const result = await response.json();
+            console.log('SecureIt: Vault check API response:', result);
+            return result;
         } catch (error) {
             console.error('Vault check error:', error);
             return { success: false, in_vault: false, matched_items: [] };
@@ -321,13 +369,11 @@ class SecureItPasswordAnalyzer {
             class: 'strong',
             message: 'Strong password!'
         };
-    }
-
-    updateCircle(strengthClass) {
+    }    updateCircle(strengthClass) {
         if (!this.currentCircle) return;
 
         // Remove existing strength classes
-        this.currentCircle.classList.remove('leaked', 'weak', 'moderate', 'strong', 'vault-match');
+        this.currentCircle.classList.remove('leaked', 'weak', 'moderate', 'strong', 'vault-match', 'password-reuse');
         this.currentCircle.classList.add(strengthClass);
     }
 
@@ -366,14 +412,13 @@ class SecureItPasswordAnalyzer {
     }
 
     styleMessage(strengthClass) {
-        if (!this.currentMessageBox) return;
-
-        const styles = {
+        if (!this.currentMessageBox) return;        const styles = {
             'leaked': { bg: '#f8d7da', color: '#721c24' },
             'weak': { bg: '#fff3cd', color: '#856404' },
             'moderate': { bg: '#d1ecf1', color: '#0c5460' },
             'strong': { bg: '#d4edda', color: '#155724' },
-            'vault-match': { bg: '#e2e3f3', color: '#383d47' }
+            'vault-match': { bg: '#e2e3f3', color: '#383d47' },
+            'password-reuse': { bg: '#f5c6cb', color: '#721c24' }
         };
 
         const style = styles[strengthClass] || styles.weak;
@@ -421,6 +466,18 @@ class SecureItPasswordAnalyzer {
         }
         if (this.currentPasswordField && this.currentMessageBox) {
             this.positionMessage(this.currentPasswordField);
+        }
+    }    extractDomainFromUrl(url) {
+        if (!url) return '';
+        try {
+            // Handle URLs that don't start with protocol
+            const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+            const urlObj = new URL(fullUrl);
+            return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+        } catch (e) {
+            // Fallback: try to extract domain from string
+            const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/);
+            return match ? match[1].toLowerCase() : '';
         }
     }
 }

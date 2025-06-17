@@ -89,14 +89,12 @@ class SecureItBackground {
                 case 'lockVault':
                     await this.clearSession();
                     sendResponse({ success: true });
-                    break;
-
-                case 'open_popup_with_password':
-                    // Store the password data for the popup to access
+                    break;                case 'open_popup_with_generator':
+                    // Store the generator request for the popup to access
                     await chrome.storage.local.set({
-                        'analyzedPassword': {
-                            password: message.password,
-                            url: message.url,
+                        'generatorRequest': {
+                            url: message.currentUrl,
+                            fieldInfo: message.fieldInfo,
                             timestamp: Date.now()
                         }
                     });
