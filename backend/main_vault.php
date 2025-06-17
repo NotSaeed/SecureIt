@@ -1852,9 +1852,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-size: 0.875rem;
             font-weight: 500;
             margin-left: 1rem;
-        }
-
-        /* Password Modal Styles */
+        }        /* Password Modal Styles */
         .password-modal {
             position: fixed;
             top: 0;
@@ -1865,6 +1863,8 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
         }
 
         .password-modal-overlay {
@@ -1962,12 +1962,26 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             padding: 0.75rem;
             border-radius: 8px;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: background-color 0.2s, transform 0.1s;
             font-size: 0.875rem;
         }
 
         .btn-copy-password:hover {
             background: #2563eb;
+        }
+
+        .btn-copy-password:active {
+            transform: translateY(1px);
+        }
+
+        .btn-copy-password.copied {
+            background: #10b981 !important;
+        }
+
+        .password-value input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
         .password-warning {
