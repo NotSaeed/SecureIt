@@ -760,6 +760,17 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             background: linear-gradient(135deg, #b91c1c, var(--danger));
         }
 
+        .btn-info {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            color: var(--white);
+        }
+
+        .btn-info:hover {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
         .btn-sm {
             padding: 0.5rem 0.875rem;
             font-size: 0.75rem;
