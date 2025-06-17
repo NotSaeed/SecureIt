@@ -299,13 +299,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Content-Type: application/json');
                     echo json_encode(['success' => false, 'message' => 'Error retrieving password: ' . $e->getMessage()]);
                     exit();
-                }
-            } else {
+                }            } else {
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => 'Invalid request or not logged in']);
                 exit();
             }
-            break;              case 'create_credential_delivery':
+            break;
+            
+        case 'get_vault_passwords_for_analysis':
+            if ($isLoggedIn) {
+                try {
+                    $vault = new Vault();
+                    $vaultItems = $vault->getUserItems($_SESSION['user_id']);
+                    
+                    $passwords = [];
+                    foreach ($vaultItems as $item) {
+                        if ($item['item_type'] === 'login' && !empty($item['password'])) {
+                            $passwords[] = [
+                                'id' => $item['id'],
+                                'name' => $item['item_name'],
+                                'website' => $item['website_url'] ?? 'No website',
+                                'username' => $item['username'] ?? 'No username',
+                                'password' => $item['password']
+                            ];
+                        }
+                    }
+                    
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'passwords' => $passwords]);
+                    exit();
+                } catch (Exception $e) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'message' => 'Error loading vault passwords: ' . $e->getMessage()]);
+                    exit();
+                }
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Not logged in']);
+                exit();
+            }
+            break;case 'create_credential_delivery':
             if ($isLoggedIn) {
                 // Add debugging
                 error_log("Credential delivery form submitted");
@@ -5453,8 +5486,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 <div class="brute-force-section">
                     <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fas fa-list"></i> Select Password from Vault
-                    </h4>
-                    <div class="password-selector">
+                    </h4>                    <div class="password-selector">
                         <div class="password-list" id="passwordList">
                             <div style="text-align: center; padding: 2rem; color: var(--gray);">
                                 <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem;"></i>
@@ -5462,9 +5494,14 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                             </div>
                         </div>
                     </div>
-                    <button class="btn btn-danger" onclick="analyzeSelectedPassword()" style="width: 100%;">
-                        <i class="fas fa-hammer"></i> Analyze Selected Password
-                    </button>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button class="btn btn-danger" onclick="analyzeSelectedPassword()" style="flex: 1;">
+                            <i class="fas fa-hammer"></i> Analyze Selected
+                        </button>
+                        <button class="btn btn-warning" onclick="analyzeAllVaultPasswords()" style="flex: 1;">
+                            <i class="fas fa-chart-bar"></i> Analyze All
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Same strength display and recommendations as analyze tab -->
@@ -7637,20 +7674,132 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             performPasswordAnalysis(password, 'analyze');
         }
-        
-        function analyzeSelectedPassword() {
+          function analyzeSelectedPassword() {
             const selectedPassword = document.querySelector('.password-item.selected');
             if (!selectedPassword) {
                 showNotification('Please select a password from your vault', 'warning');
                 return;
             }
-            
+
             const password = selectedPassword.dataset.password;
-            performPasswordAnalysis(password, 'vault');
+            const name = selectedPassword.dataset.name;
+            performPasswordAnalysis(password, 'vault', name);
         }
         
-        function performPasswordAnalysis(password, mode) {
-            showNotification('Analyzing password strength...', 'info');
+        function analyzeAllVaultPasswords() {
+            const passwordItems = document.querySelectorAll('.password-item');
+            if (passwordItems.length === 0) {
+                showNotification('No passwords found in vault to analyze', 'warning');
+                return;
+            }
+            
+            showNotification('Analyzing all vault passwords...', 'info');
+            
+            const analyses = [];
+            passwordItems.forEach(item => {
+                const password = item.dataset.password;
+                const name = item.dataset.name;
+                const analysis = calculatePasswordStrength(password);
+                analysis.name = name;
+                analyses.push(analysis);
+            });
+            
+            // Sort by strength score (weakest first)
+            analyses.sort((a, b) => a.score - b.score);
+            
+            setTimeout(() => {
+                displayAllPasswordsAnalysis(analyses);
+                showNotification(`Analysis complete! Analyzed ${analyses.length} passwords`, 'success');
+            }, 1500);
+        }
+        
+        function displayAllPasswordsAnalysis(analyses) {
+            // Create a comprehensive report
+            const totalPasswords = analyses.length;
+            const weakPasswords = analyses.filter(a => a.score < 40).length;
+            const goodPasswords = analyses.filter(a => a.score >= 70).length;
+            const averageScore = Math.round(analyses.reduce((sum, a) => sum + a.score, 0) / totalPasswords);
+            
+            const report = `
+                <div class="vault-analysis-report">
+                    <h3 style="color: var(--primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-chart-pie"></i> Vault Security Analysis Report
+                    </h3>
+                    
+                    <div class="analysis-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div class="stat-item" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #0369a1;">${totalPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Total Passwords</div>
+                        </div>
+                        <div class="stat-item" style="background: #fef2f2; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #dc2626;">${weakPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Weak/Very Weak</div>
+                        </div>
+                        <div class="stat-item" style="background: #f0fdf4; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #059669;">${goodPasswords}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Good/Excellent</div>
+                        </div>
+                        <div class="stat-item" style="background: #fefce8; padding: 1rem; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #ca8a04;">${averageScore}/100</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Average Score</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin-bottom: 1rem; color: var(--dark);">
+                        <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> Passwords Requiring Attention:
+                    </h4>
+                    
+                    <div class="password-analysis-list" style="max-height: 300px; overflow-y: auto;">
+                        ${analyses.filter(a => a.score < 70).map(analysis => `
+                            <div class="password-analysis-item" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; background: white;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <strong style="color: var(--dark);">${analysis.name}</strong>
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; background: ${analysis.color}; color: white;">
+                                        ${analysis.level} (${analysis.score}/100)
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">
+                                    <strong>Crack Time:</strong> ${analysis.crackTime} | 
+                                    <strong>Patterns:</strong> ${analysis.patterns}
+                                </div>
+                                <div style="font-size: 0.8rem; color: #ef4444;">
+                                    <strong>Issues:</strong> ${analysis.recommendations.filter(r => r.includes('⚠️')).join(', ').replace(/⚠️/g, '') || 'None'}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    ${analyses.filter(a => a.score >= 70).length > 0 ? `
+                        <h4 style="margin: 1.5rem 0 1rem 0; color: var(--success);">
+                            <i class="fas fa-check-circle"></i> Strong Passwords:
+                        </h4>
+                        <div style="font-size: 0.875rem; color: #059669;">
+                            ${analyses.filter(a => a.score >= 70).map(a => a.name).join(', ')}
+                        </div>
+                    ` : ''}
+                    
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: #eff6ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <h5 style="color: #1e40af; margin-bottom: 0.5rem;">
+                            <i class="fas fa-lightbulb"></i> Recommendations:
+                        </h5>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: #1e40af;">
+                            ${weakPasswords > 0 ? '<li>Update weak passwords immediately</li>' : ''}
+                            <li>Use unique passwords for each account</li>
+                            <li>Enable two-factor authentication where possible</li>
+                            <li>Consider using the password generator for new passwords</li>
+                            <li>Review and update passwords regularly</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            
+            // Display the report in the vault strength display area
+            document.getElementById('vaultStrengthDisplay').innerHTML = report;
+            document.getElementById('vaultStrengthDisplay').style.display = 'block';
+            document.getElementById('vaultRecommendations').style.display = 'none';
+        }
+          function performPasswordAnalysis(password, mode, name = '') {
+            showNotification(`Analyzing password strength${name ? ' for ' + name : ''}...`, 'info');
             
             // Calculate password strength metrics
             const analysis = calculatePasswordStrength(password);
@@ -7660,94 +7809,162 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 showNotification('Password analysis complete!', 'success');
             }, 1500);
         }
-        
-        function calculatePasswordStrength(password) {
+          function calculatePasswordStrength(password) {
             const length = password.length;
             const hasLowercase = /[a-z]/.test(password);
             const hasUppercase = /[A-Z]/.test(password);
             const hasNumbers = /[0-9]/.test(password);
             const hasSymbols = /[^A-Za-z0-9]/.test(password);
-            const hasCommonWords = /password|123456|qwerty|admin|letmein/i.test(password);
-            const hasPattern = /(.)\1{2,}|012|123|234|345|456|567|678|789|890|abc|bcd|cde/i.test(password);
             
-            // Calculate entropy
+            // Enhanced pattern detection
+            const commonWords = /password|123456|qwerty|admin|letmein|welcome|monkey|dragon|princess|abc123|iloveyou|sunshine|master|shadow|12345|football|baseball|superman|batman|trustno1/i.test(password);
+            const repeatingChars = /(.)\1{2,}/.test(password);
+            const sequentialChars = /012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz/i.test(password);
+            const keyboardPattern = /qwerty|asdf|zxcv|1234|qazwsx|plm|okn|ijn/i.test(password);
+            const datePattern = /19\d{2}|20\d{2}|0[1-9]\/|1[0-2]\/|\d{1,2}\/\d{1,2}\/\d{2,4}/.test(password);
+            
+            // Calculate character set size
             let charset = 0;
             if (hasLowercase) charset += 26;
             if (hasUppercase) charset += 26;
             if (hasNumbers) charset += 10;
             if (hasSymbols) charset += 32;
             
-            const entropy = Math.log2(Math.pow(charset, length));
+            // Calculate entropy
+            const entropy = length * Math.log2(charset);
             
-            // Calculate complexity score
+            // Advanced complexity scoring
             let complexityScore = 0;
-            if (length >= 8) complexityScore += 25;
+            
+            // Length scoring (progressive)
+            if (length >= 8) complexityScore += 20;
             if (length >= 12) complexityScore += 15;
             if (length >= 16) complexityScore += 10;
-            if (hasLowercase) complexityScore += 10;
-            if (hasUppercase) complexityScore += 10;
-            if (hasNumbers) complexityScore += 10;
-            if (hasSymbols) complexityScore += 20;
-            if (hasCommonWords) complexityScore -= 30;
-            if (hasPattern) complexityScore -= 20;
+            if (length >= 20) complexityScore += 5;
             
+            // Character variety
+            if (hasLowercase) complexityScore += 8;
+            if (hasUppercase) complexityScore += 8;
+            if (hasNumbers) complexityScore += 8;
+            if (hasSymbols) complexityScore += 16;
+            
+            // Bonus for character mix
+            const charTypes = [hasLowercase, hasUppercase, hasNumbers, hasSymbols].filter(Boolean).length;
+            if (charTypes >= 3) complexityScore += 10;
+            if (charTypes === 4) complexityScore += 5;
+            
+            // Penalties
+            if (commonWords) complexityScore -= 35;
+            if (repeatingChars) complexityScore -= 15;
+            if (sequentialChars) complexityScore -= 20;
+            if (keyboardPattern) complexityScore -= 25;
+            if (datePattern) complexityScore -= 15;
+            if (length < 8) complexityScore -= 30;
+            
+            // Calculate crack time estimates
+            const guessesPerSecond = 1000000000; // 1 billion guesses/sec (modern GPU)
+            const totalPossibilities = Math.pow(charset, length);
+            let secondsToCrack = totalPossibilities / (2 * guessesPerSecond);
+            
+            // Adjust for pattern penalties
+            if (commonWords || repeatingChars || sequentialChars || keyboardPattern) {
+                secondsToCrack = secondsToCrack / 1000; // Much easier to crack
+            }
+            
+            // Format crack time
+            let crackTime = "";
+            let crackTimeNumeric = secondsToCrack;
+            
+            if (secondsToCrack < 1) {
+                crackTime = "Instantly";
+                crackTimeNumeric = 0;
+            } else if (secondsToCrack < 60) {
+                crackTime = "< 1 minute";
+                crackTimeNumeric = secondsToCrack;
+            } else if (secondsToCrack < 3600) {
+                const minutes = Math.round(secondsToCrack / 60);
+                crackTime = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 86400) {
+                const hours = Math.round(secondsToCrack / 3600);
+                crackTime = `${hours} hour${hours !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000) {
+                const days = Math.round(secondsToCrack / 86400);
+                crackTime = `${days} day${days !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000000) {
+                const years = Math.round(secondsToCrack / 31536000);
+                crackTime = `${years} year${years !== 1 ? 's' : ''}`;
+            } else if (secondsToCrack < 31536000000000) {
+                const millennia = Math.round(secondsToCrack / 31536000000);
+                crackTime = `${millennia} millennia`;
+            } else {
+                crackTime = "Quintillions of years";
+            }
+            
+            // Ensure score is within bounds
             complexityScore = Math.max(0, Math.min(100, complexityScore));
             
-            // Estimate crack time
-            const guessesPerSecond = 1000000000; // 1 billion guesses per second
-            const totalPossibilities = Math.pow(charset, length);
-            const secondsToCrack = totalPossibilities / (2 * guessesPerSecond);
-            
-            let crackTime = "";
-            if (secondsToCrack < 60) {
-                crackTime = "< 1 minute";
-            } else if (secondsToCrack < 3600) {
-                crackTime = Math.round(secondsToCrack / 60) + " minutes";
-            } else if (secondsToCrack < 86400) {
-                crackTime = Math.round(secondsToCrack / 3600) + " hours";
-            } else if (secondsToCrack < 31536000) {
-                crackTime = Math.round(secondsToCrack / 86400) + " days";
-            } else if (secondsToCrack < 31536000000) {
-                crackTime = Math.round(secondsToCrack / 31536000) + " years";
-            } else {
-                crackTime = "Millions of years";
-            }
-            
-            // Determine strength level
+            // Determine strength level and color
             let strengthLevel = "";
             let strengthColor = "";
-            if (complexityScore < 30) {
+            if (complexityScore < 20) {
                 strengthLevel = "Very Weak";
-                strengthColor = "#ef4444";
-            } else if (complexityScore < 50) {
+                strengthColor = "#dc2626";
+            } else if (complexityScore < 40) {
                 strengthLevel = "Weak";
-                strengthColor = "#f59e0b";
-            } else if (complexityScore < 70) {
+                strengthColor = "#ea580c";
+            } else if (complexityScore < 60) {
                 strengthLevel = "Fair";
-                strengthColor = "#eab308";
-            } else if (complexityScore < 85) {
+                strengthColor = "#d97706";
+            } else if (complexityScore < 80) {
                 strengthLevel = "Good";
-                strengthColor = "#10b981";
+                strengthColor = "#059669";
             } else {
                 strengthLevel = "Excellent";
-                strengthColor = "#059669";
+                strengthColor = "#047857";
             }
             
-            // Generate recommendations
+            // Generate detailed recommendations
             const recommendations = [];
             if (length < 12) recommendations.push("Use at least 12 characters for better security");
+            if (length < 8) recommendations.push("⚠️ Password is too short - minimum 8 characters required");
             if (!hasUppercase) recommendations.push("Include uppercase letters (A-Z)");
             if (!hasLowercase) recommendations.push("Include lowercase letters (a-z)");
             if (!hasNumbers) recommendations.push("Include numbers (0-9)");
             if (!hasSymbols) recommendations.push("Include special characters (!@#$%^&*)");
-            if (hasCommonWords) recommendations.push("Avoid common words like 'password' or '123456'");
-            if (hasPattern) recommendations.push("Avoid repetitive patterns and sequences");
-            if (recommendations.length === 0) recommendations.push("Your password meets security best practices!");
+            if (commonWords) recommendations.push("⚠️ Avoid common dictionary words and phrases");
+            if (repeatingChars) recommendations.push("⚠️ Avoid repeated characters (e.g., 'aaa', '111')");
+            if (sequentialChars) recommendations.push("⚠️ Avoid sequential characters (e.g., '123', 'abc')");
+            if (keyboardPattern) recommendations.push("⚠️ Avoid keyboard patterns (e.g., 'qwerty', 'asdf')");
+            if (datePattern) recommendations.push("⚠️ Avoid dates and years in passwords");
+            if (charTypes < 3) recommendations.push("Use a mix of different character types");
+            if (recommendations.length === 0) recommendations.push("🎉 Excellent! Your password follows security best practices");
+            
+            // Detect patterns for display
+            const patterns = [];
+            if (commonWords) patterns.push("Common words");
+            if (repeatingChars) patterns.push("Repeated chars");
+            if (sequentialChars) patterns.push("Sequential chars");
+            if (keyboardPattern) patterns.push("Keyboard pattern");
+            if (datePattern) patterns.push("Date pattern");
+            if (patterns.length === 0) patterns.push("None detected");
             
             return {
-                score: complexityScore,
+                score: Math.round(complexityScore),
                 level: strengthLevel,
                 color: strengthColor,
+                crackTime: crackTime,
+                crackTimeSeconds: crackTimeNumeric,
+                entropy: Math.round(entropy * 10) / 10,
+                patterns: patterns.join(", "),
+                recommendations: recommendations,
+                charset: charset,
+                length: length,
+                hasLowercase: hasLowercase,
+                hasUppercase: hasUppercase,
+                hasNumbers: hasNumbers,
+                hasSymbols: hasSymbols
+            };
+        }
                 entropy: Math.round(entropy),
                 crackTime: crackTime,
                 patterns: hasCommonWords || hasPattern ? "Yes" : "None",
@@ -7782,35 +7999,68 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             
             document.getElementById(prefix + 'Recommendations').style.display = 'block';
         }
-        
-        function loadVaultPasswords() {
-            // Simulate loading vault passwords
-            setTimeout(() => {
-                const passwordList = document.getElementById('passwordList');
+          function loadVaultPasswords() {
+            const passwordList = document.getElementById('passwordList');
+            passwordList.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: var(--gray);">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <p>Loading your vault passwords...</p>
+                </div>
+            `;
+            
+            // Load real vault passwords via AJAX
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get_vault_passwords_for_analysis'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.passwords.length > 0) {
+                    let html = '';
+                    data.passwords.forEach(item => {
+                        const maskedPassword = '•'.repeat(Math.min(item.password.length, 15));
+                        html += `
+                            <div class="password-item" data-password="${item.password.replace(/"/g, '&quot;')}" data-name="${item.name}" onclick="selectPassword(this)">
+                                <div class="password-info">
+                                    <h4>${item.name}</h4>
+                                    <p>${item.website !== 'No website' ? item.website : item.username}</p>
+                                </div>
+                                <div style="font-family: monospace; color: var(--gray); font-size: 0.9rem;">${maskedPassword}</div>
+                            </div>
+                        `;
+                    });
+                    passwordList.innerHTML = html;
+                } else if (data.success && data.passwords.length === 0) {
+                    passwordList.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; color: var(--gray);">
+                            <i class="fas fa-info-circle" style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                            <p>No login passwords found in your vault.</p>
+                            <small>Add some login items to your vault to analyze their passwords.</small>
+                        </div>
+                    `;
+                } else {
+                    passwordList.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; color: var(--danger);">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                            <p>Error loading vault passwords</p>
+                            <small>${data.message || 'Please try again later'}</small>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading vault passwords:', error);
                 passwordList.innerHTML = `
-                    <div class="password-item" data-password="MySecureP@ssw0rd!" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Gmail Account</h4>
-                            <p>john.doe@gmail.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">••••••••••••••</div>
-                    </div>
-                    <div class="password-item" data-password="BankLogin123!" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Chase Bank</h4>
-                            <p>www.chase.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">••••••••••••</div>
-                    </div>
-                    <div class="password-item" data-password="password123" onclick="selectPassword(this)">
-                        <div class="password-info">
-                            <h4>Old Facebook</h4>
-                            <p>facebook.com</p>
-                        </div>
-                        <div style="font-family: monospace; color: var(--gray);">•••••••••••</div>
+                    <div style="text-align: center; padding: 2rem; color: var(--danger);">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                        <p>Network error loading passwords</p>
+                        <small>Please check your connection and try again</small>
                     </div>
                 `;
-            }, 500);
+            });
         }
         
         function selectPassword(element) {
