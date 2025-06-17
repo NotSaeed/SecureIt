@@ -3312,23 +3312,23 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         /* Send Management Styles */
         .sends-list {
             margin-top: 1rem;
-        }
-
-        .send-item {
-            background: white;
+        }        .send-item {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
             border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 1rem;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
             margin-bottom: 1rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
         .send-item:hover {
             border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
         }
 
         .send-info {
@@ -4400,11 +4400,61 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     </div>
                                 </div>
                             </div>
+                        </div>                    <?php elseif ($currentSection === 'send'): ?>
+                        <!-- Send Section with Dashboard-style Design -->
+                        
+                        <!-- Send Statistics -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['total_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-paper-plane"></i>
+                                    Total Sends
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['active_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-check-circle"></i>
+                                    Active
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['total_views']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-eye"></i>
+                                    Total Views
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number"><?php echo $sendStats['expired_sends']; ?></div>
+                                <div class="stat-label">
+                                    <i class="fas fa-clock"></i>
+                                    Expired
+                                </div>
+                            </div>
                         </div>
 
-                    <?php elseif ($currentSection === 'send'): ?>
-                        <!-- Send Section -->
-                        <div class="send-container">                            <!-- Send Tabs -->                            <div class="send-tabs">
+                        <!-- Quick Actions -->
+                        <div class="card" style="background: linear-gradient(135deg, #f8fafc, #e2e8f0); border: none; margin-bottom: 2rem;">
+                            <div class="card-body" style="text-align: center; padding: 2rem;">
+                                <h3 style="margin-bottom: 1rem; color: var(--dark);">Quick Send Actions</h3>
+                                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                                    <button class="btn btn-primary" onclick="switchSendTab('secure')" style="min-width: 180px;">
+                                        <i class="fas fa-shield-check"></i> Create Secure Send
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="switchSendTab('credential')" style="min-width: 180px;">
+                                        <i class="fas fa-key"></i> Share Credentials
+                                    </button>
+                                    <button class="btn btn-success" onclick="switchSendTab('manage')" style="min-width: 180px;">
+                                        <i class="fas fa-tasks"></i> Manage Sends
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Send Container -->
+                        <div class="send-container"><!-- Send Tabs -->                            <div class="send-tabs">
                                 <button class="send-tab-button active" data-tab="secure" onclick="switchSendTab('secure')">
                                     <i class="fas fa-shield-check"></i> Secure Send
                                 </button>
@@ -7983,9 +8033,146 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         function viewAuditAPI() {
             showNotification('Security Audit API documentation opened', 'info');
         }
-        
-        function viewAPIDocumentation() {
+          function viewAPIDocumentation() {
             showNotification('API Documentation center opened', 'info');
+        }
+
+        // Send functionality
+        function switchSendTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.send-tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.send-tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            const targetTab = document.getElementById(tabName + 'Tab');
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            
+            // Add active class to clicked tab button
+            const targetButton = document.querySelector(`[data-tab="${tabName}"]`);
+            if (targetButton) {
+                targetButton.classList.add('active');
+            }
+        }
+
+        function viewSendPassword(sendId) {
+            // Show loading state
+            const btn = document.getElementById('viewPasswordBtn_' + sendId);
+            if (btn) {
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                btn.disabled = true;
+                
+                // Make AJAX request to get password
+                fetch('', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'action=get_send_password&send_id=' + sendId
+                })
+                .then(response => response.json())
+                .then(data => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    
+                    if (data.success && data.password) {
+                        showPasswordModal(data.password);
+                    } else {
+                        showNotification(data.message || 'No password set for this send', 'info');
+                    }
+                })
+                .catch(error => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    showNotification('Error retrieving password: ' + error.message, 'error');
+                });
+            }
+        }
+
+        function showPasswordModal(password) {
+            // Create modal HTML
+            const modalHtml = `
+                <div id="passwordModal" class="modal" style="display: block; z-index: 10000;">
+                    <div class="modal-content" style="max-width: 500px; margin: 5% auto;">
+                        <div class="modal-header">
+                            <h3 class="modal-title">
+                                <i class="fas fa-key"></i> Send Access Password
+                            </h3>
+                            <button class="modal-close" onclick="closePasswordModal()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 2rem;">
+                            <div style="background: #f8fafc; border: 2px solid #e5e7eb; border-radius: var(--border-radius); padding: 1.5rem; margin-bottom: 1.5rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--dark);">
+                                    <i class="fas fa-lock"></i> Access Password:
+                                </label>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="text" id="displayPassword" value="${password}" readonly 
+                                           style="flex: 1; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: var(--border-radius); background: white; font-family: monospace; font-size: 1.1rem;">
+                                    <button class="btn btn-secondary" onclick="copyPassword()" title="Copy Password">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="text-align: center;">
+                                <p style="color: var(--gray); margin-bottom: 1rem;">
+                                    <i class="fas fa-info-circle"></i> 
+                                    Share this password with recipients to access the send
+                                </p>
+                                <button class="btn btn-primary" onclick="copyPassword()" style="min-width: 150px;">
+                                    <i class="fas fa-copy"></i> Copy Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('passwordModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        function copyPassword() {
+            const passwordField = document.getElementById('displayPassword');
+            if (passwordField) {
+                passwordField.select();
+                navigator.clipboard.writeText(passwordField.value).then(() => {
+                    showNotification('Password copied to clipboard!', 'success');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    document.execCommand('copy');
+                    showNotification('Password copied to clipboard!', 'success');
+                });
+            }
+        }
+
+        function closePasswordModal() {
+            const modal = document.getElementById('passwordModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        function copyAccessLink(token) {
+            const link = window.location.origin + window.location.pathname.replace('main_vault.php', '') + 'send_access.php?token=' + token;
+            navigator.clipboard.writeText(link).then(() => {
+                showNotification('Access link copied to clipboard!', 'success');
+            }).catch(() => {
+                showNotification('Failed to copy link', 'error');
+            });
         }
     </script>
 </body>

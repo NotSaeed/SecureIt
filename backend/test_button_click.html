@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test View Password Button</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .btn { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        .btn-info { background: #17a2b8; color: white; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Test View Password Button</h1>
+    
+    <div class="test-section">
+        <h3>Test Button Click</h3>
+        <button class="btn btn-info" onclick="testViewPassword()" id="testBtn">
+            <i class="fas fa-eye"></i> Test View Password
+        </button>
+        <p id="result"></p>
+    </div>
+
+    <script>
+        function testViewPassword() {
+            document.getElementById('result').innerHTML = '✅ Button click works! The viewSendPassword function should now be available.';
+            console.log('Test button clicked successfully');
+        }
+        
+        // Test if functions exist
+        function checkFunctions() {
+            const functions = ['viewSendPassword', 'showPasswordModal', 'copyPassword', 'closePasswordModal'];
+            let results = [];
+            
+            functions.forEach(func => {
+                if (typeof window[func] === 'function') {
+                    results.push(`✅ ${func} - Available`);
+                } else {
+                    results.push(`❌ ${func} - Missing`);
+                }
+            });
+            
+            document.getElementById('result').innerHTML += '<br><br><strong>Function Check:</strong><br>' + results.join('<br>');
+        }
+        
+        // Run check when page loads
+        window.onload = checkFunctions;
+    </script>
+</body>
+</html>
