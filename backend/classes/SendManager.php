@@ -137,16 +137,24 @@ class SendManager {
             throw $e;
         }
     }
-    
-    /**
+      /**
      * Get a send by access token
      */    public function getSend($accessToken) {
         try {
-            $sql = "SELECT * FROM sends WHERE access_token = :access_token AND expires_at > NOW()";
+            // Get send without time filter first to handle timezone issues
+            $sql = "SELECT * FROM sends WHERE access_token = :access_token";
             $send = $this->db->fetchOne($sql, ['access_token' => $accessToken]);
             
             if (!$send) {
                 return null;
+            }
+            
+            // Check expiration using PHP time to avoid timezone issues
+            $currentTime = new DateTime();
+            $expirationTime = new DateTime($send['expires_at']);
+            
+            if ($expirationTime < $currentTime) {
+                return null; // Send has expired
             }
             
             // Check if max views exceeded (only if max_views is set)
