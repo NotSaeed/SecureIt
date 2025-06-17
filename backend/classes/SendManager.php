@@ -444,10 +444,10 @@ class SendManager {
             throw $e;
         }
     }
-        /**
+    /**
      * Create a credential delivery send for sharing multiple vault items
      */
-    public function createMultiCredentialDelivery($userId, $vaultItemIds, $recipientEmail, $options = []) {
+    public function createMultiCredentialDelivery($userId, $vaultItemIds, $options = []) {
         try {
             // Generate unique access token
             $accessToken = $this->generateAccessToken();
@@ -489,7 +489,6 @@ class SendManager {
             // Prepare credential content
             $credentialContent = json_encode([
                 'items' => $vaultItems,
-                'recipient_email' => $recipientEmail,
                 'message' => $options['message'] ?? null,
                 'selection_mode' => $options['selection_mode'] ?? 'multiple'
             ]);
@@ -514,7 +513,6 @@ class SendManager {
                 'max_views' => $options['max_views'] ?? null,
                 'password_hash' => null,
                 'metadata' => json_encode([
-                    'recipient_email' => $recipientEmail,
                     'vault_item_ids' => $vaultItemIds,
                     'selection_mode' => $options['selection_mode'] ?? 'multiple',
                     'item_count' => $itemCount,
@@ -557,7 +555,6 @@ class SendManager {
                 'id' => $sendId,
                 'access_link' => $accessToken,
                 'expires_at' => $expirationDate,
-                'recipient_email' => $recipientEmail,
                 'item_count' => $itemCount
             ];
               } catch (Exception $e) {

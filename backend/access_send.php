@@ -556,11 +556,11 @@ if (empty($access_link)) {
                         <span>Expires: <?php echo date('M j, Y g:i A', strtotime($send['expires_at'])); ?></span>
                         <span>Views: <?php echo $send['view_count']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?></span>
                     </div>
-                    
-                    <?php if ($send['type'] === 'text'): ?>
+                      <?php if ($send['type'] === 'text'): ?>
                         <div class="send-text">
                             <?php echo htmlspecialchars($send['content']); ?>
-                        </div>                    <?php elseif ($send['type'] === 'credential'): ?>
+                        </div>
+                    <?php elseif ($send['type'] === 'credential'): ?>
                         <?php 
                         $credentialData = json_decode($send['content'], true);
                         if ($credentialData):
@@ -865,14 +865,13 @@ if (empty($access_link)) {
                                     </div>
                                 </div>
                                 <?php endif; ?>
-                            </div>
-                              <div class="credential-warning">
+                            </div>                            <div class="credential-warning">
                                 <i class="fas fa-exclamation-triangle"></i>
-                                <p>This credential was shared with you by <strong><?php echo htmlspecialchars($credentialData['recipient_email']); ?></strong>. 
+                                <p>These credentials have been securely shared with you. 
                                    Keep this information secure and do not share it with others.</p>
-                            </div>
-                        </div>
-                        <?php endif; ?>                    <?php else: ?>
+                            </div></div>
+                        <?php endif; ?>
+                    <?php else: ?>
                         <?php if ($send['storage_type'] === 'blob'): ?>
                             <!-- Image stored as BLOB - display inline with download option -->
                             <div class="image-display">
@@ -896,7 +895,8 @@ if (empty($access_link)) {
                                         </a>
                                     </div>
                                 </div>
-                            </div>                        <?php else: ?>
+                            </div>
+                        <?php else: ?>
                             <!-- File stored as downloadable - show download link -->
                             <div class="file-download">
                                 <i class="fas fa-download"></i>
@@ -913,9 +913,9 @@ if (empty($access_link)) {
                                     <i class="fas fa-download"></i> Download File
                                 </a>
                             </div>
-                        <?php endif; ?>                    <?php endif; ?>
-                    
-                </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                      </div>
                 
                 <div style="text-align: center; margin-top: 2rem;">
                     <p style="color: #666; font-size: 0.9rem;">
@@ -923,7 +923,9 @@ if (empty($access_link)) {
                     </p>
                 </div>
             <?php endif; ?>
-        </div>    </div>
+        </div>
+    </div>
+    <?php endif; ?>
     
     <script>
         function togglePassword() {

@@ -276,17 +276,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
               case 'create_credential_delivery':
-            if ($isLoggedIn) {
-                try {
+            if ($isLoggedIn) {                try {
                     $sendManager = new SendManager();
-                    
-                    // Validate required fields
-                    if (empty($_POST['recipient_email'])) {
-                        throw new Exception('Recipient email is required');
-                    }
-                    if (!filter_var($_POST['recipient_email'], FILTER_VALIDATE_EMAIL)) {
-                        throw new Exception('Please enter a valid email address');
-                    }
                     
                     // Determine selection mode and get vault items
                     $selectionMode = $_POST['selection_mode'] ?? 'single';
@@ -328,11 +319,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
                         'selection_mode' => $selectionMode
                     ];
-                    
-                    $result = $sendManager->createMultiCredentialDelivery(
+                      $result = $sendManager->createMultiCredentialDelivery(
                         $_SESSION['user_id'],
                         $vaultItemIds,
-                        $_POST['recipient_email'],
                         $options
                     );
                     
@@ -4471,17 +4460,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                                                 <p>This will share all items in your vault with the recipient. Use with caution and only with trusted individuals.</p>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div class="form-group">
-                                                    <label for="credential_recipient" class="enhanced-label">
-                                                        <i class="fas fa-user"></i> Recipient Email
-                                                    </label>
-                                                    <input type="email" id="credential_recipient" name="recipient_email" class="enhanced-input" 
-                                                           placeholder="Enter recipient's email address" required>
-                                                    <small class="form-help">Who will receive access to this credential</small>
-                                                </div>
+                                                    </div>                                                </div>
                                             </div>
                                             
                                             <div class="form-section">
