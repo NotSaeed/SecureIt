@@ -2,11 +2,9 @@
 class SecureItPopup {
     constructor() {
         console.log('SecureIt Extension Popup initializing...');
-        this.apiBase = 'http://localhost/SecureIt/backend/api';
-        this.currentUser = null;
+        this.apiBase = 'http://localhost/SecureIt/backend/api';        this.currentUser = null;
         this.currentSection = 'vault';
         this.vaultItems = [];
-        this.sendItems = [];
         
         // Storage abstraction for web vs extension
         this.storage = {
@@ -89,12 +87,19 @@ class SecureItPopup {
                 this.login();
             });
         }
-        
-        const loginBtn = document.getElementById('login-btn');
+          const loginBtn = document.getElementById('login-btn');
         if (loginBtn) {
             loginBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.login();
+            });
+        }
+
+        const registerBtn = document.getElementById('register-btn');
+        if (registerBtn) {
+            registerBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.navigateToRegister();
             });
         }
 
@@ -134,11 +139,7 @@ class SecureItPopup {
         });
 
         document.getElementById('word-count').addEventListener('input', (e) => {
-            document.getElementById('word-count-value').textContent = e.target.value;
-        });
-
-        // Send
-        document.getElementById('create-send-btn').addEventListener('click', () => this.showCreateSendModal());
+            document.getElementById('word-count-value').textContent = e.target.value;        });
 
         // Modals
         document.querySelectorAll('.close-modal').forEach(btn => {
@@ -146,9 +147,7 @@ class SecureItPopup {
         });
 
         document.getElementById('cancel-add').addEventListener('click', () => this.closeModals());
-        document.getElementById('cancel-send').addEventListener('click', () => this.closeModals());
         document.getElementById('save-item').addEventListener('click', () => this.saveVaultItem());
-        document.getElementById('save-send').addEventListener('click', () => this.createSend());
 
         // Modal background click
         document.querySelectorAll('.modal').forEach(modal => {
@@ -241,6 +240,18 @@ class SecureItPopup {
         } catch (error) {
             console.error('Login error:', error);
             this.showError('Login failed. Please try again.');
+        }    }
+
+    navigateToRegister() {
+        // Open the registration page in a new tab
+        const registerUrl = 'http://localhost/SecureIT/backend/main_vault.php?register=1';
+        
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+            // If running as extension, open in new tab
+            chrome.tabs.create({ url: registerUrl });
+        } else {
+            // If running in web context, open in new window/tab
+            window.open(registerUrl, '_blank');
         }
     }
 
@@ -253,19 +264,13 @@ class SecureItPopup {
         } catch (error) {
             console.error('Logout error:', error);
         }        // Clear extension storage
-        await this.storage.remove(['secureit_user', 'secureit_session']);
-
-        this.currentUser = null;
+        await this.storage.remove(['secureit_user', 'secureit_session']);        this.currentUser = null;
         this.vaultItems = [];
-        this.sendItems = [];
         this.updateUI();
     }
 
     async loadUserData() {
-        await Promise.all([
-            this.loadVaultItems(),
-            this.loadSendItems()
-        ]);
+        await this.loadVaultItems();
     }
 
     async loadVaultItems() {
@@ -286,18 +291,6 @@ class SecureItPopup {
         } catch (error) {
             console.error('Failed to load vault items:', error);
             this.showError('Failed to connect to vault API');
-        }
-    }
-
-    async loadSendItems() {
-        try {
-            const response = await this.makeRequest('/send.php?action=list');
-            if (response.success) {
-                this.sendItems = response.items || [];
-                this.renderSendItems();
-            }
-        } catch (error) {
-            console.error('Failed to load send items:', error);
         }
     }    async checkAnalyzedPassword() {
         try {
@@ -428,45 +421,7 @@ class SecureItPopup {
         });
         
         console.log('Added click listeners to vault items');
-    }
-
-    renderSendItems() {
-        const container = document.getElementById('send-items');
-        
-        if (this.sendItems.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22,2 15,22 11,13 2,9"></polygon>
-                    </svg>
-                    <p>No sends created yet</p>
-                </div>
-            `;
-            return;
-        }
-
-        container.innerHTML = this.sendItems.map(item => `
-            <div class="send-item" data-id="${item.id}">
-                <div class="send-item-header">
-                    <div class="send-item-name">${this.escapeHtml(item.name)}</div>
-                    <div class="send-item-type">${item.type}</div>
-                </div>
-                <div class="send-item-url">${item.access_url}</div>
-                <div class="send-item-expiry">Expires: ${new Date(item.deletion_date).toLocaleDateString()}</div>
-            </div>
-        `).join('');
-
-        // Add click listeners
-        container.querySelectorAll('.send-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const itemId = item.dataset.id;
-                this.showSendItemDetails(itemId);
-            });
-        });
-    }
-
-    searchVault(query) {
+    }    searchVault(query) {
         const items = document.querySelectorAll('.vault-item');
         items.forEach(item => {
             const name = item.querySelector('.vault-item-name').textContent.toLowerCase();
@@ -549,18 +504,7 @@ class SecureItPopup {
     showAddItemModal() {
         document.getElementById('add-item-modal').classList.add('active');
         document.getElementById('item-name').focus();
-    }
-
-    showCreateSendModal() {
-        document.getElementById('create-send-modal').classList.add('active');
-        // Set default expiry to 7 days from now
-        const expiry = new Date();
-        expiry.setDate(expiry.getDate() + 7);
-        document.getElementById('send-expiry').value = expiry.toISOString().slice(0, 16);
-        document.getElementById('send-name').focus();
-    }
-
-    closeModals() {
+    }    closeModals() {
         document.querySelectorAll('.modal').forEach(modal => {
             modal.classList.remove('active');
         });
@@ -572,12 +516,6 @@ class SecureItPopup {
         document.getElementById('item-password').value = '';
         document.getElementById('item-url').value = '';
         document.getElementById('item-notes').value = '';
-
-        // Clear send form
-        document.getElementById('send-name').value = '';
-        document.getElementById('send-content').value = '';
-        document.getElementById('send-password').value = '';
-        document.getElementById('send-max-views').value = '';
     }async saveVaultItem() {
         const name = document.getElementById('item-name').value.trim();
         const type = document.getElementById('item-type').value;
@@ -638,46 +576,6 @@ class SecureItPopup {
         } catch (error) {
             console.error('Save error:', error);
             this.showError('Failed to save item: ' + error.message);
-        }
-    }
-
-    async createSend() {
-        const name = document.getElementById('send-name').value.trim();
-        const type = document.getElementById('send-type').value;
-        const content = document.getElementById('send-content').value.trim();
-        const password = document.getElementById('send-password').value;
-        const expiry = document.getElementById('send-expiry').value;
-        const maxViews = document.getElementById('send-max-views').value;
-
-        if (!name || !content) {
-            this.showError('Name and content are required');
-            return;
-        }
-
-        try {
-            const response = await this.makeRequest('/send.php', {
-                method: 'POST',
-                body: JSON.stringify({
-                    action: 'create',
-                    type: type,
-                    name: name,
-                    content: content,
-                    password: password || null,
-                    deletion_date: expiry || null,
-                    max_views: maxViews ? parseInt(maxViews) : null
-                })
-            });
-
-            if (response.success) {
-                this.closeModals();
-                await this.loadSendItems();
-                this.showSuccess('Send created successfully');
-            } else {
-                this.showError(response.message || 'Failed to create send');
-            }
-        } catch (error) {
-            console.error('Create send error:', error);
-            this.showError('Failed to create send');
         }
     }    async showVaultItemDetails(itemId) {
         try {
@@ -913,24 +811,6 @@ class SecureItPopup {
             console.error('Error message:', error.message);
             console.error('Error stack:', error.stack);
             this.showError(`Failed to load item details: ${error.message}`);
-        }
-    }
-
-    async showSendItemDetails(itemId) {
-        const item = this.sendItems.find(s => s.id == itemId);
-        if (item) {
-            const details = `
-                Name: ${item.name}
-                Type: ${item.type}
-                Access URL: ${item.access_url}
-                Expires: ${new Date(item.deletion_date).toLocaleDateString()}
-                Views: ${item.current_views || 0}${item.max_views ? ` / ${item.max_views}` : ''}
-            `;
-            
-            if (confirm(`${details}\n\nCopy access URL to clipboard?`)) {
-                await navigator.clipboard.writeText(item.access_url);
-                this.showSuccess('Access URL copied to clipboard');
-            }
         }
     }    async deleteVaultItem(itemId) {
         if (!confirm('Are you sure you want to delete this item?')) {

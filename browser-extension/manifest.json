@@ -1,21 +1,10 @@
 {
   "manifest_version": 3,
   "name": "SecureIt Password Manager",
-  "version": "1.0.0",
-  "description": "A secure password manager with vault, generator, and send functionality",
-  "icons": {
-    "16": "assets/icon16.png",
-    "32": "assets/icon32.png",
-    "48": "assets/icon48.png",
-    "128": "assets/icon128.png"
-  },
+  "version": "1.0.0",  "description": "A secure password manager with vault, generator, and send functionality",
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "SecureIt",
-    "default_icon": {
-      "16": "assets/icon16.png",
-      "32": "assets/icon32.png"
-    }
+    "default_title": "SecureIt"
   },
   "background": {
     "service_worker": "background/background.js"

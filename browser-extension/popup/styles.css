@@ -55,14 +55,15 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: var(--text-primary);
+  gap: 12px;
+  font-weight: 600;  color: var(--text-primary);
 }
 
-.logo img {
-  width: 24px;
-  height: 24px;
+.logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary-color);
+  letter-spacing: -0.025em;
 }
 
 .header-actions {
@@ -253,7 +254,7 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
     color: white;
 }
 
@@ -270,12 +271,6 @@ body {
 
 .login-header {
     margin-bottom: 32px;
-}
-
-.login-logo {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 16px;
 }
 
 .login-header h1 {
@@ -303,6 +298,7 @@ body {
     margin-bottom: 6px;
     font-size: 14px;
     font-weight: 500;
+    color: white;
 }
 
 .login-form input {
@@ -330,9 +326,9 @@ body {
     width: 100%;
     padding: 12px;
     margin-top: 8px;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
+    color: var(--primary-color);
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
@@ -340,12 +336,32 @@ body {
 }
 
 .login-form .btn-primary:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 1);
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .login-form .btn-primary:active {
     transform: translateY(0);
+}
+
+.login-form .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    margin-top: 12px;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.login-form .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: translateY(-1px);
 }
 
 /* Main App Styles */
