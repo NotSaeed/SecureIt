@@ -4,7 +4,31 @@
  */
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: http://localhost:3000');
+
+// Allow requests from extension and localhost
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost',
+    'https://localhost',
+    'chrome-extension://',
+    'moz-extension://'
+];
+
+$isAllowed = false;
+foreach ($allowedOrigins as $allowed) {
+    if (strpos($origin, $allowed) === 0) {
+        $isAllowed = true;
+        break;
+    }
+}
+
+if ($isAllowed || empty($origin)) {
+    header('Access-Control-Allow-Origin: ' . ($origin ?: '*'));
+} else {
+    header('Access-Control-Allow-Origin: http://localhost:3000');
+}
+
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
@@ -38,12 +62,35 @@ try {
         case 'GET':
             $action = $_GET['action'] ?? 'list';
 
-            switch ($action) {
-                case 'list':
+            switch ($action) {                case 'list':
                     $items = $vault->getUserItems($user_id);
+                    
+                    // Format items for extension compatibility
+                    $formattedItems = array_map(function($item) {
+                        $formatted = [
+                            'id' => $item['id'],
+                            'name' => $item['item_name'] ?? 'Untitled',
+                            'type' => $item['item_type'],
+                            'url' => $item['website_url'],
+                            'created_at' => $item['created_at'],
+                            'updated_at' => $item['updated_at'],
+                            'folder_id' => $item['folder_id'],
+                            'is_favorite' => $item['is_favorite']
+                        ];
+                        
+                        // Extract username and password from decrypted_data
+                        if (isset($item['decrypted_data']) && is_array($item['decrypted_data'])) {
+                            $formatted['username'] = $item['decrypted_data']['username'] ?? '';
+                            $formatted['password'] = $item['decrypted_data']['password'] ?? '';
+                            $formatted['notes'] = $item['decrypted_data']['notes'] ?? '';
+                        }
+                        
+                        return $formatted;
+                    }, $items);
+                    
                     echo json_encode([
                         'success' => true,
-                        'items' => $items
+                        'items' => $formattedItems
                     ]);
                     break;
 

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Vault Detection Debug</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .test-form {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        input[type="password"], input[type="email"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        input[type="password"]:focus, input[type="email"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        .debug-console {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .debug-console h3 {
+            color: #90cdf4;
+            margin-top: 0;
+        }
+        
+        .debug-entry {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-left: 3px solid #4fd1c7;
+            padding-left: 10px;
+        }
+        
+        .debug-error {
+            border-left-color: #f56565;
+            background: rgba(245, 101, 101, 0.1);
+        }
+        
+        .debug-success {
+            border-left-color: #68d391;
+            background: rgba(104, 211, 145, 0.1);
+        }
+        
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #bee5eb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .status-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .manual-test-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .manual-test-btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Password Vault Detection Debug</h1>
+        
+        <div class="instructions">
+            <strong>Debug Steps:</strong>
+            <ol>
+                <li>Make sure you're logged into SecureIt in another tab</li>
+                <li>Enter a password that you know is saved in your vault</li>
+                <li>Watch the debug console below for detailed information</li>
+                <li>Check for any error messages in red</li>
+            </ol>
+        </div>
+        
+        <div class="status-info">
+            <strong>Current Status:</strong><br>
+            URL: <span id="current-url"></span><br>
+            Domain: <span id="current-domain"></span><br>
+            API Base: <span id="api-base"></span><br>
+            Time: <span id="current-time"></span>
+        </div>
+        
+        <div class="test-form">
+            <h3>Test Password Field</h3>
+            <div class="form-group">
+                <label for="email">Email (optional)</label>
+                <input type="email" id="email" placeholder="your@email.com">
+            </div>
+            <div class="form-group">
+                <label for="password">Password (enter one from your vault)</label>
+                <input type="password" id="password" placeholder="Enter a password from your vault">
+            </div>
+            
+            <button class="manual-test-btn" onclick="manualVaultCheck()">Manual Vault Check</button>
+            <button class="manual-test-btn" onclick="clearDebugLog()">Clear Debug Log</button>
+            <button class="manual-test-btn" onclick="checkAuthStatus()">Check Auth Status</button>
+        </div>
+        
+        <div class="debug-console">
+            <h3>Debug Console</h3>
+            <div id="debug-log">
+                Waiting for password input...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize debug logging
+        const debugLog = document.getElementById('debug-log');
+        
+        function addDebugEntry(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `debug-entry ${type === 'error' ? 'debug-error' : type === 'success' ? 'debug-success' : ''}`;
+            entry.innerHTML = `[${timestamp}] ${message}`;
+            debugLog.appendChild(entry);
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        function clearDebugLog() {
+            debugLog.innerHTML = 'Debug log cleared...';
+        }
+        
+        // Update status info
+        function updateStatusInfo() {
+            document.getElementById('current-url').textContent = window.location.href;
+            document.getElementById('current-domain').textContent = extractDomainFromUrl(window.location.href);
+            document.getElementById('api-base').textContent = 'http://localhost/SecureIt/backend/api';
+            document.getElementById('current-time').textContent = new Date().toLocaleString();
+        }
+        
+        function extractDomainFromUrl(url) {
+            try {
+                const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+                const urlObj = new URL(fullUrl);
+                return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+            } catch (e) {
+                const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/);
+                return match ? match[1].toLowerCase() : '';
+            }
+        }
+        
+        // Manual vault check function
+        async function manualVaultCheck() {
+            const passwordField = document.getElementById('password');
+            const password = passwordField.value;
+            
+            if (!password) {
+                addDebugEntry('Please enter a password first', 'error');
+                return;
+            }
+            
+            addDebugEntry(`Starting manual vault check for password (length: ${password.length})`, 'info');
+            
+            try {
+                const requestBody = {
+                    action: 'check_password_in_vault',
+                    password: password,
+                    url: window.location.href
+                };
+                
+                addDebugEntry(`Request body: ${JSON.stringify(requestBody, null, 2)}`, 'info');
+                
+                const response = await fetch('http://localhost/SecureIt/backend/api/extension.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(requestBody)
+                });
+                
+                addDebugEntry(`Response status: ${response.status} ${response.statusText}`, 'info');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                addDebugEntry(`API Response: ${JSON.stringify(result, null, 2)}`, 'success');
+                
+                if (result.in_vault) {
+                    addDebugEntry(`Password found in vault! Matched items: ${result.matched_items.length}`, 'success');
+                    result.matched_items.forEach((item, index) => {
+                        addDebugEntry(`  Item ${index + 1}: ${item.name} (${item.url})`, 'success');
+                    });
+                } else {
+                    addDebugEntry('Password not found in vault', 'info');
+                }
+                
+            } catch (error) {
+                addDebugEntry(`Error: ${error.message}`, 'error');
+                console.error('Manual vault check error:', error);
+            }
+        }
+        
+        // Check authentication status
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('http://localhost/SecureIt/backend/api/extension.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        action: 'get_vault_passwords'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    addDebugEntry(`Authentication OK. Found ${result.passwords?.length || 0} vault passwords`, 'success');
+                } else {
+                    addDebugEntry(`Authentication issue: ${result.message}`, 'error');
+                }
+                
+            } catch (error) {
+                addDebugEntry(`Auth check error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Override console.log to capture password analyzer logs
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        
+        console.log = function(...args) {
+            if (args[0] && args[0].toString().includes('SecureIt')) {
+                addDebugEntry(`Console Log: ${args.join(' ')}`, 'info');
+            }
+            originalConsoleLog.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            if (args[0] && args[0].toString().includes('SecureIt')) {
+                addDebugEntry(`Console Error: ${args.join(' ')}`, 'error');
+            }
+            originalConsoleError.apply(console, args);
+        };
+        
+        // Initialize
+        updateStatusInfo();
+        addDebugEntry('Debug page loaded successfully', 'success');
+        
+        // Monitor password field
+        document.getElementById('password').addEventListener('input', (e) => {
+            if (e.target.value.length > 0) {
+                addDebugEntry(`Password entered (length: ${e.target.value.length}). Analyzer should trigger in 500ms...`, 'info');
+            }
+        });
+    </script>
+
+    <!-- Load the password analyzer -->
+    <script src="content/password-analyzer.js"></script>
+</body>
+</html>

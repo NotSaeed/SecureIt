@@ -1,0 +1,14 @@
+<!-- SVG placeholder for SecureIt icon -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#2563eb" rx="20"/>
+  <g fill="white">
+    <!-- Shield shape -->
+    <path d="M64 20L84 30v25c0 15-9 29-20 35-11-6-20-20-20-35V30L64 20z" stroke="white" stroke-width="2" fill="none"/>
+    <!-- Lock icon -->
+    <rect x="54" y="60" width="20" height="15" rx="2" fill="white"/>
+    <circle cx="64" cy="67" r="2" fill="#2563eb"/>
+    <path d="M58 60V54a6 6 0 0 1 12 0v6" stroke="white" stroke-width="2" fill="none"/>
+  </g>
+  <!-- Text -->
+  <text x="64" y="100" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="12" font-weight="bold">SecureIt</text>
+</svg>

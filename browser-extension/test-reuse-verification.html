@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Reuse Detection Verification</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .status-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .test-form {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        input[type="password"], input[type="email"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        input[type="password"]:focus, input[type="email"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #bee5eb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .expected-results {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .result-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        
+        .circle-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 15px;
+            border: 2px solid #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        
+        .circle-red { background-color: #e74c3c; }
+        .circle-purple { background-color: #6f42c1; }
+        .circle-green { background-color: #28a745; }
+        .circle-orange { background-color: #fd7e14; }
+        
+        .debug-info {
+            background: #343a40;
+            color: #ffffff;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        
+        .current-url {
+            background: #17a2b8;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Password Reuse Detection Verification</h1>
+        
+        <div class="current-url">
+            Current URL: <span id="current-url">Loading...</span>
+        </div>
+        
+        <div class="instructions">
+            <strong>🧪 Test Instructions:</strong>
+            <ol>
+                <li>Make sure you're logged into SecureIt and have passwords saved for different websites</li>
+                <li>Enter a password you've used for another domain in your vault</li>
+                <li>Observe the circle color and message that appears</li>
+                <li>Check the debug information below to understand the detection logic</li>
+            </ol>
+        </div>
+        
+        <div class="test-form">
+            <h3>Primary Test - Cross-Site Password</h3>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" placeholder="test@example.com">
+            </div>
+            <div class="form-group">
+                <label for="password">Password (try one from another site)</label>
+                <input type="password" id="password" placeholder="Enter a password you've used elsewhere">
+            </div>
+        </div>
+        
+        <div class="test-form">
+            <h3>Secondary Test - New Password</h3>
+            <div class="form-group">
+                <label for="new-password">New Unique Password</label>
+                <input type="password" id="new-password" placeholder="Enter a completely new password">
+            </div>
+        </div>
+        
+        <div class="expected-results">
+            <h3>Expected Results</h3>
+            <div class="result-item">
+                <div class="circle-indicator circle-red"></div>
+                <div>
+                    <strong>Red Circle (Fast Pulse):</strong> Password reused on other domains<br>
+                    <em>Message: "⚠️ Also used on: [domain.com]" or "⚠️ Used on X other sites: ..."</em>
+                </div>
+            </div>
+            <div class="result-item">
+                <div class="circle-indicator circle-purple"></div>
+                <div>
+                    <strong>Purple Circle:</strong> Password saved for this same domain<br>
+                    <em>Message: "✓ Saved in vault: [Account Name]"</em>
+                </div>
+            </div>
+            <div class="result-item">
+                <div class="circle-indicator circle-green"></div>
+                <div>
+                    <strong>Green Circle:</strong> Strong, unique password<br>
+                    <em>Message: "Strong password!"</em>
+                </div>
+            </div>
+            <div class="result-item">
+                <div class="circle-indicator circle-orange"></div>
+                <div>
+                    <strong>Orange Circle:</strong> Weak password<br>
+                    <em>Message: "Weak: Add uppercase, numbers, symbols"</em>
+                </div>
+            </div>
+        </div>
+        
+        <div class="debug-info">
+            <h4>🔧 Debug Information</h4>
+            <div id="debug-output">
+                Debug information will appear here when you interact with password fields...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Display current URL
+        document.getElementById('current-url').textContent = window.location.href;
+        
+        // Add debug logging
+        const debugOutput = document.getElementById('debug-output');
+        
+        function addDebugLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            debugOutput.innerHTML += `[${timestamp}] ${message}<br>`;
+            debugOutput.scrollTop = debugOutput.scrollHeight;
+        }
+        
+        // Monitor password field interactions
+        document.querySelectorAll('input[type="password"]').forEach(field => {
+            field.addEventListener('input', () => {
+                if (field.value.length > 0) {
+                    addDebugLog(`Password entered in field: ${field.id}`);
+                    addDebugLog(`Password length: ${field.value.length} characters`);
+                    addDebugLog(`Current domain: ${extractDomainFromUrl(window.location.href)}`);
+                    addDebugLog(`Analyzer should trigger in 500ms...`);
+                }
+            });
+        });
+        
+        function extractDomainFromUrl(url) {
+            try {
+                const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+                const urlObj = new URL(fullUrl);
+                return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+            } catch (e) {
+                const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/);
+                return match ? match[1].toLowerCase() : '';
+            }
+        }
+        
+        // Log when the page loads
+        addDebugLog('Password reuse detection test page loaded');
+        addDebugLog(`Extracted domain: ${extractDomainFromUrl(window.location.href)}`);
+    </script>
+
+    <!-- Load the password analyzer -->
+    <script src="content/password-analyzer.js"></script>
+</body>
+</html>

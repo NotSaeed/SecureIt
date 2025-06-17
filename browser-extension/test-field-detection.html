@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Field Detection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        input[type="password"], input[type="email"], input[type="range"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        input[type="range"] {
+            padding: 0;
+            height: 40px;
+        }
+        
+        .password-generator {
+            background: #e7f3ff;
+            border: 1px solid #bee5eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .strength-meter {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .length-control {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .length-value {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            border-radius: 4px;
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .should-analyze {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .should-not-analyze {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .test-result {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        
+        .passed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Password Field Detection Test</h1>
+        <p style="text-align: center; color: #666;">This page tests that the password analyzer only appears on appropriate fields.</p>
+        
+        <!-- Fields that SHOULD show the analyzer circle -->
+        <div class="should-analyze">
+            <h3>✅ These fields SHOULD show the analyzer circle:</h3>
+        </div>
+        
+        <div class="test-section">
+            <h3>Login Form (Should Analyze)</h3>
+            <div class="form-group">
+                <label for="login-email">Email</label>
+                <input type="email" id="login-email" placeholder="your@email.com">
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Enter your password">
+                <div class="test-result" id="result-login"></div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Registration Form (Should Analyze)</h3>
+            <div class="form-group">
+                <label for="reg-password">Create Password</label>
+                <input type="password" id="reg-password" placeholder="Create a strong password">
+                <div class="test-result" id="result-reg"></div>
+            </div>
+            <div class="form-group">
+                <label for="confirm-password">Confirm Password</label>
+                <input type="password" id="confirm-password" placeholder="Confirm your password">
+                <div class="test-result" id="result-confirm"></div>
+            </div>
+        </div>
+        
+        <!-- Fields that should NOT show the analyzer circle -->
+        <div class="should-not-analyze">
+            <h3>❌ These fields should NOT show the analyzer circle:</h3>
+        </div>
+        
+        <div class="test-section">
+            <div class="password-generator">
+                <h3>Password Generator UI (Should NOT Analyze)</h3>
+                <div class="form-group">
+                    <label for="generated-password">Generated Password (Display Only)</label>
+                    <input type="password" id="generated-password" class="generator" readonly value="TempPassword123!" placeholder="Generated password appears here">
+                    <div class="test-result" id="result-generated"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <div class="strength-meter">
+                <h3>Password Strength Controls (Should NOT Analyze)</h3>
+                <div class="length-control">
+                    <label for="length-slider">Password Length:</label>
+                    <input type="range" id="length-slider" min="8" max="32" value="12" class="slider">
+                    <div class="length-value">12</div>
+                </div>
+                <div class="form-group">
+                    <label for="strength-input">Strength Test Input</label>
+                    <input type="password" id="strength-input" class="strength-meter" placeholder="Strength testing field">
+                    <div class="test-result" id="result-strength"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Password Options (Should NOT Analyze)</h3>
+            <div class="form-group">
+                <label for="length-input">Length Input</label>
+                <input type="password" id="length-input" class="length-input" placeholder="Length control">
+                <div class="test-result" id="result-length"></div>
+            </div>
+            <div class="form-group">
+                <label for="disabled-password">Disabled Password Field</label>
+                <input type="password" id="disabled-password" disabled value="DisabledPassword">
+                <div class="test-result" id="result-disabled"></div>
+            </div>
+            <div class="form-group">
+                <label for="readonly-password">Readonly Password Field</label>
+                <input type="password" id="readonly-password" readonly value="ReadonlyPassword">
+                <div class="test-result" id="result-readonly"></div>
+            </div>
+            <div class="form-group">
+                <label for="no-analyze-password">No Analyze Attribute</label>
+                <input type="password" id="no-analyze-password" data-no-analyze="true" placeholder="Should not be analyzed">
+                <div class="test-result" id="result-no-analyze"></div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Hidden Fields (Should NOT Analyze)</h3>
+            <div class="form-group">
+                <label for="hidden-password">Hidden Password Field</label>
+                <input type="password" id="hidden-password" style="display: none;" value="HiddenPassword">
+                <div class="test-result" id="result-hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Test monitoring
+        let circleAppearances = {};
+        
+        // Override the showFeedbackCircle method to track appearances
+        setTimeout(() => {
+            if (window.secureItAnalyzer) {
+                const originalShowCircle = window.secureItAnalyzer.showFeedbackCircle;
+                window.secureItAnalyzer.showFeedbackCircle = function(passwordField) {
+                    const fieldId = passwordField.id || 'unknown';
+                    circleAppearances[fieldId] = true;
+                    updateTestResult(fieldId);
+                    return originalShowCircle.call(this, passwordField);
+                };
+            }
+        }, 1000);
+        
+        function updateTestResult(fieldId) {
+            const resultElement = document.getElementById(`result-${fieldId.replace('-password', '').replace('-input', '')}`);
+            if (!resultElement) return;
+            
+            const shouldAnalyze = [
+                'login-password', 'reg-password', 'confirm-password'
+            ].includes(fieldId);
+            
+            if (shouldAnalyze) {
+                resultElement.textContent = '✅ PASS: Circle appeared correctly';
+                resultElement.className = 'test-result passed';
+            } else {
+                resultElement.textContent = '❌ FAIL: Circle should not appear here';
+                resultElement.className = 'test-result failed';
+            }
+        }
+        
+        // Add test values to fields after page loads
+        setTimeout(() => {
+            const fieldsToTest = [
+                'login-password', 'reg-password', 'confirm-password',
+                'strength-input', 'length-input', 'no-analyze-password'
+            ];
+            
+            fieldsToTest.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field && !field.value) {
+                    field.value = 'TestPassword123!';
+                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+            
+            // Check for fields that didn't get circles (good)
+            setTimeout(() => {
+                const shouldNotAnalyze = [
+                    'generated', 'strength', 'length', 'disabled', 'readonly', 'no-analyze', 'hidden'
+                ];
+                
+                shouldNotAnalyze.forEach(prefix => {
+                    const resultElement = document.getElementById(`result-${prefix}`);
+                    if (resultElement && !resultElement.textContent) {
+                        resultElement.textContent = '✅ PASS: Circle correctly did not appear';
+                        resultElement.className = 'test-result passed';
+                    }
+                });
+            }, 2000);
+        }, 500);
+        
+        // Length slider functionality
+        const lengthSlider = document.getElementById('length-slider');
+        const lengthValue = document.querySelector('.length-value');
+        
+        lengthSlider.addEventListener('input', (e) => {
+            lengthValue.textContent = e.target.value;
+        });
+    </script>
+
+    <!-- Load the password analyzer -->
+    <script src="content/password-analyzer.js"></script>
+</body>
+</html>

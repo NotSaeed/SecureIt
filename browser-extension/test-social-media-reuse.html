@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Login - Cross-Site Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .social-logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .social-logo h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin: 0;
+            font-weight: 700;
+        }
+        
+        .social-logo p {
+            color: #666;
+            margin: 5px 0 0 0;
+            font-size: 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            background: #fff;
+        }
+        
+        input[type="email"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-bottom: 15px;
+        }
+        
+        .login-btn:hover {
+            background: #764ba2;
+        }
+        
+        .forgot-link {
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .forgot-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .test-info {
+            background: #e7f3ff;
+            border: 1px solid #bee5eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .test-info h3 {
+            margin: 0 0 10px 0;
+            color: #0c5460;
+        }
+        
+        .test-info p {
+            margin: 0;
+            color: #0c5460;
+            font-size: 14px;
+        }
+        
+        .domain-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .domain-info strong {
+            color: #495057;
+        }
+        
+        .signup-section {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .signup-section p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .signup-btn {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .signup-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="social-logo">
+            <h1>📱 SocialConnect</h1>
+            <p>Connect with friends</p>
+        </div>
+        
+        <div class="test-info">
+            <h3>🧪 Cross-Domain Password Test</h3>
+            <p>This simulates a social media site. Try passwords you've saved for other domains (like banking, email, etc.) to test cross-site reuse detection.</p>
+        </div>
+        
+        <form>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" placeholder="Enter your email">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter your password">
+            </div>
+            
+            <button type="button" class="login-btn">Log In</button>
+        </form>
+        
+        <div class="forgot-link">
+            <a href="#">Forgot your password?</a>
+        </div>
+        
+        <div class="signup-section">
+            <p>Don't have an account?</p>
+            <button type="button" class="signup-btn">Sign Up</button>
+        </div>
+        
+        <div class="domain-info">
+            <strong>Current Domain:</strong> socialconnect.local<br>
+            <strong>Test Scenario:</strong> Enter a password saved for a different domain in your vault<br>
+            <strong>Expected Result:</strong> Red circle with fast pulse + warning message listing other sites
+        </div>
+    </div>
+
+    <!-- Load the password analyzer -->
+    <script src="content/password-analyzer.js"></script>
+</body>
+</html>

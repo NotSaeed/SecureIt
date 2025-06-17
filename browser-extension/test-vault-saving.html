@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Vault Saving from Extension</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #0c5460;
+            background: #d1ecf1;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Vault Saving from Extension</h1>
+        
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Make sure you're logged into the SecureIt extension</li>
+                <li>Open the extension popup</li>
+                <li>Try adding a new vault item</li>
+                <li>Check this page to test the API directly</li>
+            </ol>
+        </div>
+
+        <div class="test-form">
+            <h2>Test Direct Vault API</h2>
+            <form id="vault-test-form">
+                <label>Item Name:</label>
+                <input type="text" id="test-name" value="Test Login" required>
+                
+                <label>Item Type:</label>
+                <select id="test-type">
+                    <option value="login">Login</option>
+                    <option value="note">Secure Note</option>
+                    <option value="card">Card</option>
+                    <option value="identity">Identity</option>
+                </select>
+                
+                <label>Username:</label>
+                <input type="text" id="test-username" value="testuser@example.com">
+                
+                <label>Password:</label>
+                <input type="password" id="test-password" value="TestPassword123!">
+                
+                <label>Website URL:</label>
+                <input type="url" id="test-url" value="https://example.com">
+                
+                <label>Notes:</label>
+                <textarea id="test-notes">Test notes for this item</textarea>
+                
+                <button type="submit">Test Save to Vault</button>
+                <button type="button" onclick="testVaultList()">Test Load Vault</button>
+                <button type="button" onclick="testAuth()">Test Auth Status</button>
+            </form>
+        </div>
+
+        <div id="results"></div>
+
+        <div class="test-form">
+            <h2>Extension Test Form</h2>
+            <p>Use this form to test the password analyzer with the extension:</p>
+            <form>
+                <label>Website Login:</label>
+                <input type="email" placeholder="your@email.com">
+                <input type="password" placeholder="Type a password to see analysis">
+                
+                <label>Registration Form:</label>
+                <input type="text" placeholder="Choose username">
+                <input type="password" placeholder="Create password">
+                <input type="password" placeholder="Confirm password">
+                
+                <button type="button">Submit (Demo)</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost/SecureIt/backend/api';
+        
+        function showResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerHTML = message;
+            results.appendChild(div);
+            
+            // Auto-scroll to results
+            div.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function makeRequest(endpoint, options = {}) {
+            try {
+                const url = `${API_BASE}${endpoint}`;
+                console.log('Making request to:', url, options);
+                
+                const config = {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    ...options
+                };
+
+                const response = await fetch(url, config);
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                return data;
+            } catch (error) {
+                console.error('Request error:', error);
+                throw error;
+            }
+        }
+
+        async function testAuth() {
+            try {
+                showResult('Testing authentication...', 'info');
+                const response = await makeRequest('/auth.php', {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'check_session' })
+                });
+                
+                if (response.success) {
+                    showResult(`✅ Authentication successful. User: ${response.user?.email || 'Unknown'}`, 'success');
+                } else {
+                    showResult('❌ Not authenticated. Please log in via the extension.', 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Auth test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testVaultList() {
+            try {
+                showResult('Testing vault list...', 'info');
+                const response = await makeRequest('/vault.php?action=list');
+                
+                if (response.success) {
+                    showResult(`✅ Vault loaded successfully. Items: ${response.items?.length || 0}`, 'success');
+                    if (response.items && response.items.length > 0) {
+                        const itemsList = response.items.map(item => 
+                            `• ${item.name || 'Unnamed'} (${item.type}) - ${item.url || 'No URL'}`
+                        ).join('<br>');
+                        showResult(`Items in vault:<br>${itemsList}`, 'info');
+                    }
+                } else {
+                    showResult(`❌ Failed to load vault: ${response.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Vault list test failed: ${error.message}`, 'error');
+            }
+        }
+
+        document.getElementById('vault-test-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                item_name: document.getElementById('test-name').value,
+                item_type: document.getElementById('test-type').value,
+                data: {
+                    username: document.getElementById('test-username').value,
+                    password: document.getElementById('test-password').value,
+                    notes: document.getElementById('test-notes').value
+                },
+                website_url: document.getElementById('test-url').value || null
+            };
+
+            try {
+                showResult('Testing vault save...', 'info');
+                console.log('Sending data:', formData);
+                
+                const response = await makeRequest('/vault.php', {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                
+                if (response.success) {
+                    showResult(`✅ Item saved successfully! ID: ${response.item_id}`, 'success');
+                    // Automatically test loading the vault
+                    setTimeout(testVaultList, 1000);
+                } else {
+                    showResult(`❌ Failed to save item: ${response.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Save test failed: ${error.message}`, 'error');
+            }
+        });
+
+        // Auto-test auth on page load
+        window.addEventListener('load', () => {
+            setTimeout(testAuth, 500);
+        });
+    </script>
+</body>
+</html>

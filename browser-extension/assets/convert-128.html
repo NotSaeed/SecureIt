@@ -1,0 +1,34 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SVG to PNG Converter</title>
+</head>
+<body>
+    <canvas id="canvas" width="128" height="128"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        img.onload = function() {
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.drawImage(img, 0, 0, 128, 128);
+            
+            // Convert to PNG and download
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'icon128.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        };
+        
+        img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+DQogIDxkZWZzPg0KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ic2hpZWxkR3JhZGllbnQxMjgiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjAlIj4NCiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiM0QTkwRTIiLz4NCiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMjU2M0VCIi8+DQogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0eWxlPSJzdG9wLWNvbG9yOiMxRDRFRDgiLz4NCiAgICA8L2xpbmVhckdyYWRpZW50Pg0KICA8L2RlZnM+DQogIDxwYXRoIGQ9Ik0yNTYgNDggTDM4NCA5NiBMMzg0IDI1NiBRMzg0IDM1MiAyNTYgNDQ4IFExMjggMzUyIDEyOCAyNTYgTDEyOCA5NiBaIiANCiAgICAgICAgZmlsbD0iI0U4RjJGRiIgc3Ryb2tlPSIjQzVEOUZGIiBzdHJva2Utd2lkdGg9IjYiLz4NCiAgPHBhdGggZD0iTTI1NiA4MCBMMzUyIDExMiBMMzUyIDI0MCBRMzUyIDMyMCAyNTYgNDAwIFExNjAgMzIwIDE2MCAyNDAgTDE2MCAxMTIgWiIgDQogICAgICAgIGZpbGw9InVybCgjc2hpZWxkR3JhZGllbnQxMjgpIi8+DQogIDxwYXRoIGQ9Ik0yNTYgODAgTDMyMCAxMDQgTDMyMCAyMDAgUTMyMCAyNjAgMjU2IDMyMCBMMjU2IDgwIiANCiAgICAgICAgZmlsbD0iIzVCQTNGNSIgb3BhY2l0eT0iMC43Ii8+DQo8L3N2Zz4=';
+    </script>
+</body>
+</html>

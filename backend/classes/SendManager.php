@@ -43,9 +43,10 @@ class SendManager {
                 'type' => $type,
                 'name' => $name,
                 'access_token' => $accessToken,
-                'expires_at' => $expirationDate,
-                'max_views' => $options['max_views'] ?? 10,
-                'password_hash' => null,                'content' => null,
+                'expires_at' => $expirationDate,                'max_views' => $options['max_views'] ?? 10,
+                'password_hash' => null,
+                'access_password' => null,
+                'content' => null,
                 'file_path' => null,
                 'file_name' => null,
                 'file_size' => null,
@@ -55,11 +56,12 @@ class SendManager {
                 'anonymous' => $options['anonymous'] ?? false,
                 'created_at' => date('Y-m-d H:i:s')
             ];
-            
-            // Handle password protection
+              // Handle password protection
             if (!empty($options['password'])) {
                 $sendData['password_hash'] = password_hash($options['password'], PASSWORD_ARGON2ID);
-            }            // Handle content based on type
+                // Also store encrypted password for owner to view
+                $sendData['access_password'] = $this->encryptionHelper->encrypt($options['password']);
+            }// Handle content based on type
             if ($type === 'file') {
                 // File upload handling
                 if (isset($options['file_path'])) {
@@ -113,8 +115,8 @@ class SendManager {
                 $sendData['content'] = $this->encryptionHelper->encrypt($content);
                 $sendData['storage_type'] = null;
             }            // Insert into database
-            $sql = "INSERT INTO sends (user_id, type, name, access_token, content, file_path, file_name, file_size, file_data, storage_type, mime_type, password_hash, expires_at, max_views, view_count, anonymous, created_at) 
-                    VALUES (:user_id, :type, :name, :access_token, :content, :file_path, :file_name, :file_size, :file_data, :storage_type, :mime_type, :password_hash, :expires_at, :max_views, 0, :anonymous, :created_at)";
+            $sql = "INSERT INTO sends (user_id, type, name, access_token, content, file_path, file_name, file_size, file_data, storage_type, mime_type, password_hash, access_password, expires_at, max_views, view_count, anonymous, created_at) 
+                    VALUES (:user_id, :type, :name, :access_token, :content, :file_path, :file_name, :file_size, :file_data, :storage_type, :mime_type, :password_hash, :access_password, :expires_at, :max_views, 0, :anonymous, :created_at)";
             
             $result = $this->db->query($sql, $sendData);
             
@@ -362,13 +364,17 @@ class SendManager {
      * Create a credential delivery send for sharing vault items
      */
     public function createCredentialDelivery($userId, $vaultItemId, $recipientEmail, $options = []) {
-        try {
-            // Generate unique access token
+        try {            // Generate unique access token
             $accessToken = $this->generateAccessToken();
             
             // Calculate expiration based on hours
             $expiryHours = $options['expiry_hours'] ?? 24;
-            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            if ($expiryHours == 0) {
+                // Forever - set to 100 years from now
+                $expirationDate = date('Y-m-d H:i:s', strtotime('+100 years'));
+            } else {
+                $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            }
             
             // Get vault item data
             $vault = new Vault();
@@ -448,13 +454,17 @@ class SendManager {
      * Create a credential delivery send for sharing multiple vault items
      */
     public function createMultiCredentialDelivery($userId, $vaultItemIds, $options = []) {
-        try {
-            // Generate unique access token
+        try {            // Generate unique access token
             $accessToken = $this->generateAccessToken();
             
             // Calculate expiration based on hours
             $expiryHours = $options['expiry_hours'] ?? 24;
-            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            if ($expiryHours == 0) {
+                // Forever - set to 100 years from now
+                $expirationDate = date('Y-m-d H:i:s', strtotime('+100 years'));
+            } else {
+                $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            }
             
             // Get vault items data
             $vault = new Vault();
@@ -560,6 +570,36 @@ class SendManager {
               } catch (Exception $e) {
             error_log("SendManager::createMultiCredentialDelivery - " . $e->getMessage());
             throw $e;
+        }
+    }
+      /**
+     * Get the password for a send (for the owner to view)
+     */
+    public function getSendPassword($sendId, $userId) {
+        try {
+            $sql = "SELECT access_password, password_hash FROM sends WHERE id = :id AND user_id = :user_id";
+            $result = $this->db->fetchOne($sql, ['id' => $sendId, 'user_id' => $userId]);
+            
+            if (!$result) {
+                return null;
+            }
+            
+            // If we have the encrypted password, return it
+            if (!empty($result['access_password'])) {
+                return $this->encryptionHelper->decrypt($result['access_password']);
+            }
+            
+            // If we only have a password hash (legacy sends), return a special message
+            if (!empty($result['password_hash'])) {
+                return 'LEGACY_PASSWORD_PROTECTED';
+            }
+            
+            // No password set
+            return null;
+            
+        } catch (Exception $e) {
+            error_log("SendManager::getSendPassword error: " . $e->getMessage());
+            return null;
         }
     }
 }

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureIt Extension - Updated Test</title>
+    <link rel="stylesheet" href="popup/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+            font-family: 'Inter', sans-serif;
+        }
+        .test-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .extension-preview {
+            width: 400px;
+            height: 600px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .test-controls {
+            width: 300px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            height: fit-content;
+        }
+        .debug-panel {
+            flex: 1;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .control-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .control-section h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-success { background: #4CAF50; }
+        .status-error { background: #f44336; }
+        .status-pending { background: #ff9800; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 2px;
+            width: 100%;
+        }
+        button:hover { background: #1976D2; }
+        .debug-output {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 150px;
+            overflow: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <!-- Extension Preview -->
+        <div class="extension-preview">
+            <div id="app">
+                <!-- Extension content will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Test Controls -->
+        <div class="test-controls">
+            <h2>Test Controls</h2>
+            
+            <div class="control-section">
+                <h3>Authentication</h3>
+                <div>
+                    <span class="status-indicator status-pending" id="status-auth"></span>
+                    <span id="auth-status">Not checked</span>
+                </div>
+                <button onclick="testLogin()">Login Test User</button>
+                <button onclick="testLogout()">Logout</button>
+                <button onclick="clearStorage()">Clear Storage</button>
+            </div>
+
+            <div class="control-section">
+                <h3>Session Persistence</h3>
+                <div>
+                    <span class="status-indicator status-pending" id="status-session"></span>
+                    <span id="session-status">Not tested</span>
+                </div>
+                <button onclick="testSessionPersistence()">Test Session Persistence</button>
+                <button onclick="simulatePopupReopen()">Simulate Popup Reopen</button>
+            </div>
+
+            <div class="control-section">
+                <h3>UI Layout</h3>
+                <div>
+                    <span class="status-indicator status-pending" id="status-layout"></span>
+                    <span id="layout-status">Not checked</span>
+                </div>
+                <button onclick="testLoginPageLayout()">Check Login Page</button>
+                <button onclick="testMainAppLayout()">Check Main App</button>
+            </div>
+
+            <div class="control-section">
+                <h3>Full Flow</h3>
+                <button onclick="runFullTest()">Run Complete Test</button>
+            </div>
+        </div>
+
+        <!-- Debug Panel -->
+        <div class="debug-panel">
+            <h2>Debug Information</h2>
+            
+            <div>
+                <h3>Current State</h3>
+                <div>Login Page Visible: <span id="login-visible">-</span></div>
+                <div>Main App Visible: <span id="main-visible">-</span></div>
+                <div>Current User: <span id="current-user">None</span></div>
+                <div>Storage Available: <span id="storage-available">-</span></div>
+            </div>
+
+            <div>
+                <h3>Console Log</h3>
+                <div id="console-output" class="debug-output">Console output will appear here...</div>
+            </div>
+
+            <div>
+                <h3>Storage Contents</h3>
+                <div id="storage-output" class="debug-output">Storage contents will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let appInstance = null;
+        let debugMessages = [];
+
+        // Override console to capture output
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        function addDebugMessage(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            debugMessages.push(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+            document.getElementById('console-output').textContent = debugMessages.slice(-15).join('\n');
+        }
+
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addDebugMessage('log', args.join(' '));
+        };
+
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addDebugMessage('error', args.join(' '));
+        };
+
+        function updateStatus(type, status, success = null) {
+            const statusElement = document.getElementById(`${type}-status`);
+            const indicatorElement = document.getElementById(`status-${type}`);
+            
+            statusElement.textContent = status;
+            
+            if (success === true) {
+                indicatorElement.className = 'status-indicator status-success';
+            } else if (success === false) {
+                indicatorElement.className = 'status-indicator status-error';
+            } else {
+                indicatorElement.className = 'status-indicator status-pending';
+            }
+        }
+
+        async function loadExtension() {
+            try {
+                console.log('Loading extension popup...');
+                const response = await fetch('popup/index.html');
+                const html = await response.text();
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const appDiv = doc.getElementById('app');
+                
+                if (appDiv) {
+                    document.getElementById('app').innerHTML = appDiv.innerHTML;
+                    console.log('Extension HTML loaded');
+                    
+                    // Load the popup script
+                    const script = document.createElement('script');
+                    script.src = 'popup/popup.js';
+                    script.onload = function() {
+                        console.log('Extension script loaded');
+                        // Access the app instance
+                        if (typeof SecureItPopup !== 'undefined') {
+                            appInstance = window.secureIt || new SecureItPopup();
+                        }
+                        updateUIState();
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    console.error('Could not find app div');
+                }
+            } catch (error) {
+                console.error('Failed to load extension:', error);
+            }
+        }
+
+        function updateUIState() {
+            const loginPage = document.getElementById('login-page');
+            const mainApp = document.getElementById('main-app');
+            
+            document.getElementById('login-visible').textContent = 
+                loginPage && !loginPage.classList.contains('hidden') ? 'Yes' : 'No';
+            document.getElementById('main-visible').textContent = 
+                mainApp && mainApp.classList.contains('active') ? 'Yes' : 'No';
+            
+            if (appInstance && appInstance.currentUser) {
+                document.getElementById('current-user').textContent = appInstance.currentUser.email || 'Authenticated';
+            } else {
+                document.getElementById('current-user').textContent = 'None';
+            }
+            
+            document.getElementById('storage-available').textContent = 
+                typeof Storage !== 'undefined' ? 'Yes' : 'No';
+        }
+
+        async function testLogin() {
+            try {
+                updateStatus('auth', 'Testing login...', null);
+                
+                // Fill login form
+                const emailInput = document.getElementById('email');
+                const passwordInput = document.getElementById('password');
+                
+                if (emailInput && passwordInput) {
+                    emailInput.value = 'test@secureit.com';
+                    passwordInput.value = 'password123';
+                    
+                    // Trigger login
+                    if (appInstance && appInstance.login) {
+                        await appInstance.login();
+                        updateStatus('auth', 'Login successful', true);
+                    } else {
+                        // Fallback: click login button
+                        const loginBtn = document.getElementById('login-btn');
+                        if (loginBtn) {
+                            loginBtn.click();
+                            setTimeout(() => {
+                                updateStatus('auth', 'Login triggered', true);
+                                updateUIState();
+                            }, 1000);
+                        }
+                    }
+                } else {
+                    updateStatus('auth', 'Login form not found', false);
+                }
+                
+                updateUIState();
+            } catch (error) {
+                console.error('Login test failed:', error);
+                updateStatus('auth', 'Login failed', false);
+            }
+        }
+
+        async function testLogout() {
+            try {
+                if (appInstance && appInstance.logout) {
+                    await appInstance.logout();
+                    updateStatus('auth', 'Logged out', true);
+                } else {
+                    const lockBtn = document.getElementById('lock-btn');
+                    if (lockBtn) {
+                        lockBtn.click();
+                        updateStatus('auth', 'Logout triggered', true);
+                    }
+                }
+                updateUIState();
+            } catch (error) {
+                console.error('Logout test failed:', error);
+                updateStatus('auth', 'Logout failed', false);
+            }
+        }
+
+        async function clearStorage() {
+            try {
+                localStorage.clear();
+                updateStatus('session', 'Storage cleared', true);
+                updateStorageDisplay();
+            } catch (error) {
+                console.error('Clear storage failed:', error);
+                updateStatus('session', 'Clear failed', false);
+            }
+        }
+
+        async function testSessionPersistence() {
+            try {
+                updateStatus('session', 'Testing persistence...', null);
+                
+                // First login
+                await testLogin();
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Check if session is stored
+                const stored = localStorage.getItem('secureit_user');
+                if (stored) {
+                    updateStatus('session', 'Session stored successfully', true);
+                } else {
+                    updateStatus('session', 'Session not stored', false);
+                }
+                
+                updateStorageDisplay();
+            } catch (error) {
+                console.error('Session persistence test failed:', error);
+                updateStatus('session', 'Persistence test failed', false);
+            }
+        }
+
+        async function simulatePopupReopen() {
+            try {
+                updateStatus('session', 'Simulating reopen...', null);
+                
+                // Clear current state
+                if (appInstance) {
+                    appInstance.currentUser = null;
+                    appInstance.updateUI();
+                }
+                
+                // Simulate extension reinitialization
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                if (appInstance && appInstance.checkAuthStatus) {
+                    await appInstance.checkAuthStatus();
+                    appInstance.updateUI();
+                }
+                
+                updateStatus('session', 'Reopen simulated', true);
+                updateUIState();
+            } catch (error) {
+                console.error('Popup reopen simulation failed:', error);
+                updateStatus('session', 'Simulation failed', false);
+            }
+        }
+
+        function testLoginPageLayout() {
+            const loginPage = document.getElementById('login-page');
+            const mainApp = document.getElementById('main-app');
+            
+            if (loginPage && !loginPage.classList.contains('hidden')) {
+                updateStatus('layout', 'Login page visible correctly', true);
+            } else {
+                updateStatus('layout', 'Login page layout issue', false);
+            }
+            updateUIState();
+        }
+
+        function testMainAppLayout() {
+            const mainApp = document.getElementById('main-app');
+            
+            if (mainApp && mainApp.classList.contains('active')) {
+                updateStatus('layout', 'Main app visible correctly', true);
+            } else {
+                updateStatus('layout', 'Main app layout issue', false);
+            }
+            updateUIState();
+        }
+
+        async function runFullTest() {
+            console.log('Starting full test sequence...');
+            
+            await clearStorage();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            testLoginPageLayout();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testLogin();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            testMainAppLayout();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testSessionPersistence();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await simulatePopupReopen();
+            
+            console.log('Full test sequence completed');
+        }
+
+        function updateStorageDisplay() {
+            const storage = {
+                secureit_user: localStorage.getItem('secureit_user'),
+                secureit_session: localStorage.getItem('secureit_session')
+            };
+            document.getElementById('storage-output').textContent = JSON.stringify(storage, null, 2);
+        }
+
+        // Initialize
+        window.onload = function() {
+            console.log('Test page loaded');
+            loadExtension();
+            setInterval(updateUIState, 2000); // Update UI state every 2 seconds
+            setInterval(updateStorageDisplay, 3000); // Update storage display every 3 seconds
+        };
+    </script>
+</body>
+</html>
