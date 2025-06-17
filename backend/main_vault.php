@@ -2561,12 +2561,153 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             font-size: 0.875rem;
             transition: var(--transition);
             background: var(--white);
-        }
-
-        .enhanced-input:focus {
+        }        .enhanced-input:focus {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        /* Selection Mode Styles */
+        .selection-mode-tabs {
+            display: flex;
+            background: #f1f5f9;
+            border-radius: var(--border-radius);
+            padding: 0.25rem;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        
+        .selection-mode-tabs input[type="radio"] {
+            display: none;
+        }
+        
+        .mode-tab {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            text-align: center;
+            border-radius: calc(var(--border-radius) - 0.25rem);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            color: #64748b;
+            background: transparent;
+        }
+        
+        .selection-mode-tabs input[type="radio"]:checked + .mode-tab {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+        }
+        
+        .mode-tab:hover {
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--primary);
+        }
+        
+        .selection-mode-tabs input[type="radio"]:checked + .mode-tab:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        /* Selection Sections */
+        .selection-section {
+            margin-top: 1rem;
+        }
+        
+        /* Items Checklist Styles */
+        .items-checklist {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: var(--border-radius);
+            background: white;
+        }
+        
+        .item-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background-color 0.2s ease;
+        }
+        
+        .item-checkbox:last-child {
+            border-bottom: none;
+        }
+        
+        .item-checkbox:hover {
+            background: #f8fafc;
+        }
+        
+        .enhanced-checkbox {
+            margin-right: 0.75rem;
+            width: 1.125rem;
+            height: 1.125rem;
+            cursor: pointer;
+        }
+        
+        .item-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            flex: 1;
+            font-size: 0.875rem;
+        }
+        
+        .item-icon {
+            font-size: 1.125rem;
+        }
+        
+        .item-name {
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        .item-type {
+            color: #64748b;
+            font-size: 0.75rem;
+            font-weight: 400;
+        }
+          /* Checked state styling */
+        .item-checkbox:has(input:checked) {
+            background: #eff6ff;
+            border-color: #dbeafe;
+        }
+        
+        .item-checkbox:has(input:checked) .item-name {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        /* Info box for all items selection */
+        .info-box {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            color: #92400e;
+        }
+        
+        .info-box i {
+            color: #d97706;
+            margin-top: 0.125rem;
+            font-size: 1.125rem;
+        }
+        
+        .info-box strong {
+            display: block;
+            margin-bottom: 0.25rem;
+            color: #92400e;
+        }
+        
+        .info-box p {
+            margin: 0;
+            font-size: 0.875rem;
+            line-height: 1.4;
         }
 
         .enhanced-textarea {
@@ -3300,7 +3441,8 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             z-index: 1;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             letter-spacing: -0.05em;
-        }        .stat-label {
+            color: var(--white) !important;
+        }.stat-label {
             font-size: 1.125rem;
             opacity: 0.95;
             position: relative;
@@ -3309,6 +3451,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            color: var(--white) !important;
         }
 
         .stat-label i {
@@ -4643,23 +4786,22 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                 <h2 class="card-title">Security Center</h2>
                                 <p class="card-description">Monitor your security posture and access powerful security tools and APIs.</p>
                             </div>
-                            <div class="card-body">
-                                <div class="stats-grid">
+                            <div class="card-body">                                <div class="stats-grid">
                                     <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--success);">85</div>
-                                        <div class="stat-label">Security Score</div>
+                                        <div class="stat-number" style="color: var(--white);">85</div>
+                                        <div class="stat-label" style="color: var(--white);">Security Score</div>
                                     </div>
                                     <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--warning);">3</div>
-                                        <div class="stat-label">Weak Passwords</div>
+                                        <div class="stat-number" style="color: var(--white);">3</div>
+                                        <div class="stat-label" style="color: var(--white);">Weak Passwords</div>
                                     </div>
                                     <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--danger);">2</div>
-                                        <div class="stat-label">Reused Passwords</div>
+                                        <div class="stat-number" style="color: var(--white);">2</div>
+                                        <div class="stat-label" style="color: var(--white);">Reused Passwords</div>
                                     </div>
                                     <div class="stat-card">
-                                        <div class="stat-number" style="color: var(--info);">0</div>
-                                        <div class="stat-label">Compromised</div>
+                                        <div class="stat-number" style="color: var(--white);">0</div>
+                                        <div class="stat-label" style="color: var(--white);">Compromised</div>
                                     </div>
                                 </div>
                                   <!-- Security Tools Section -->
@@ -4667,10 +4809,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     <h3 style="margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 600;">Security Tools & APIs</h3>
                                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
                                         <!-- Brute Force Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
+                                        <div class="card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
                                                 <h4 style="margin: 0; color: #991b1b; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i class="fas fa-hammer"></i> Brute Force Analyzer
+                                                    <span style="background: #fbbf24; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Coming Soon</span>
                                                 </h4>
                                             </div>
                                             <div class="card-body">
@@ -4707,10 +4849,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- Password Analysis -->
-                                        <div class="card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(245, 158, 11, 0.2);">
+                                        <div class="card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(245, 158, 11, 0.2);">
                                                 <h4 style="margin: 0; color: #92400e; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i class="fas fa-search"></i> Password Analysis
+                                                    <span style="background: #fbbf24; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Coming Soon</span>
                                                 </h4>
                                             </div>
                                             <div class="card-body">
@@ -4727,10 +4869,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- Breach Detection -->
-                                        <div class="card" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(147, 51, 234, 0.2);">
+                                        <div class="card" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);">                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(147, 51, 234, 0.2);">
                                                 <h4 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i class="fas fa-shield-virus"></i> Breach Detection
+                                                    <span style="background: #fbbf24; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Coming Soon</span>
                                                 </h4>
                                             </div>
                                             <div class="card-body">
@@ -4747,10 +4889,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- Two-Factor Authentication -->
-                                        <div class="card" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(16, 185, 129, 0.2);">
+                                        <div class="card" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(16, 185, 129, 0.2);">
                                                 <h4 style="margin: 0; color: #065f46; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i class="fas fa-mobile-alt"></i> 2FA Setup
+                                                    <span style="background: #fbbf24; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Coming Soon</span>
                                                 </h4>
                                             </div>
                                             <div class="card-body">
@@ -4767,10 +4909,10 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                         </div>
 
                                         <!-- API Management -->
-                                        <div class="card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">
-                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
+                                        <div class="card" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);">                                            <div class="card-header" style="background: transparent; border-bottom: 1px solid rgba(99, 102, 241, 0.2);">
                                                 <h4 style="margin: 0; color: #3730a3; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i class="fas fa-cogs"></i> API Management
+                                                    <span style="background: #fbbf24; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Coming Soon</span>
                                                 </h4>
                                             </div>
                                             <div class="card-body">
@@ -5815,9 +5957,47 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) {
                 event.target.style.display = 'none';
+            }        }
+        
+        // Handle selection mode changes for credential delivery
+        function handleSelectionModeChange() {
+            const selectedMode = document.querySelector('input[name="selection_mode"]:checked').value;
+            const singleSection = document.getElementById('single_selection');
+            const multipleSection = document.getElementById('multiple_selection');
+            const allSection = document.getElementById('all_selection');
+            
+            // Hide all sections first
+            if (singleSection) singleSection.style.display = 'none';
+            if (multipleSection) multipleSection.style.display = 'none';
+            if (allSection) allSection.style.display = 'none';
+            
+            // Show the appropriate section
+            switch(selectedMode) {
+                case 'single':
+                    if (singleSection) singleSection.style.display = 'block';
+                    break;
+                case 'multiple':
+                    if (multipleSection) multipleSection.style.display = 'block';
+                    break;
+                case 'all':
+                    if (allSection) allSection.style.display = 'block';
+                    break;
+            }
+        }
+        
+        // Handle checkbox changes in multiple selection mode
+        function handleCheckboxChange() {
+            const checkedBoxes = document.querySelectorAll('input[name="vault_items[]"]:checked');
+            const submitButton = document.querySelector('#credentialDeliveryForm button[type="submit"]');
+            
+            // Update submit button text to show selected count
+            if (submitButton && checkedBoxes.length > 0) {
+                submitButton.innerHTML = `<i class="fas fa-share"></i> Share ${checkedBoxes.length} Item${checkedBoxes.length > 1 ? 's' : ''}`;
+            } else if (submitButton) {
+                submitButton.innerHTML = '<i class="fas fa-share"></i> Share Credentials';
             }
         }        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {            // Initialize generator if on generator page
+        document.addEventListener('DOMContentLoaded', function() {// Initialize generator if on generator page
             if (window.location.search.includes('section=generator')) {
                 // Set up slider synchronization
                 const slider = document.getElementById('passwordLengthSlider');

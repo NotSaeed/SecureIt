@@ -414,33 +414,64 @@ if (empty($access_link)) {
             text-decoration: none;
             color: white;
         }
-        
-        /* File download styles */
+          /* File download styles */
         .file-download {
             text-align: center;
-            padding: 2rem;
-            background: #f8f9fa;
-            border-radius: 12px;
+            padding: 2.5rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 16px;
             margin: 1rem 0;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        
+        .file-download:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
         }
         
         .file-info {
             background: white;
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 1rem;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+            border: 1px solid #e2e8f0;
         }
         
         .file-info h4 {
-            color: #2d3748;
-            margin-bottom: 0.5rem;
+            color: #1e293b;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
         }
         
         .file-info p {
-            color: #718096;
-            margin: 0.25rem 0;
-            font-size: 0.9rem;
+            color: #64748b;
+            margin: 0.5rem 0;
+            font-size: 0.95rem;
+        }
+        
+        .file-info p strong {
+            color: #374151;
+            font-weight: 600;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+            text-decoration: none;
+            color: white;
         }
         
         /* Multiple Credentials Styles */
@@ -540,8 +571,18 @@ if (empty($access_link)) {
                     <button type="submit" class="btn">
                         <i class="fas fa-unlock"></i> Access Send
                     </button>
-                </form>
-            <?php elseif ($send): ?>                <!-- Display Send Content -->
+                </form>            <?php elseif ($send): ?>
+                <!-- DEBUG: Show send type and data -->
+                <div style="background: #f0f0f0; padding: 10px; margin: 10px 0; border: 1px solid #ccc; font-family: monospace; font-size: 12px;">
+                    <strong>DEBUG INFO:</strong><br>
+                    Send Type: <?php echo htmlspecialchars($send['type'] ?? 'NOT SET'); ?><br>
+                    File Name: <?php echo htmlspecialchars($send['file_name'] ?? 'NOT SET'); ?><br>
+                    Storage Type: <?php echo htmlspecialchars($send['storage_type'] ?? 'NOT SET'); ?><br>
+                    MIME Type: <?php echo htmlspecialchars($send['mime_type'] ?? 'NOT SET'); ?><br>
+                    Has Password: <?php echo !empty($send['password_hash']) ? 'YES' : 'NO'; ?><br>
+                </div>
+                
+                <!-- Display Send Content -->
                 <div class="send-content">
                     <h2>
                         <?php if (!empty($send['anonymous'])): ?>
@@ -555,11 +596,64 @@ if (empty($access_link)) {
                         <span>Created: <?php echo date('M j, Y g:i A', strtotime($send['created_at'])); ?></span>
                         <span>Expires: <?php echo date('M j, Y g:i A', strtotime($send['expires_at'])); ?></span>
                         <span>Views: <?php echo $send['view_count']; ?><?php echo $send['max_views'] ? '/' . $send['max_views'] : ''; ?></span>
-                    </div>
-                      <?php if ($send['type'] === 'text'): ?>
+                    </div>                      <?php if ($send['type'] === 'text'): ?>
                         <div class="send-text">
                             <?php echo htmlspecialchars($send['content']); ?>
                         </div>
+                    <?php elseif ($send['type'] === 'file'): ?>
+                        <?php 
+                        // Store access token in session for seamless downloads
+                        $_SESSION['temp_download_access_' . $send['access_token']] = true;
+                        
+                        // Check if this is an image file
+                        $imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+                        $isImage = in_array(strtolower($send['mime_type'] ?? ''), $imageTypes);
+                        ?>
+                        
+                        <?php if ($isImage && $send['storage_type'] === 'blob'): ?>
+                            <!-- Image file - display inline with download option -->
+                            <div class="image-display">
+                                <div class="image-container">
+                                    <img src="view_image.php?send=<?php echo $send['access_token']; ?>" 
+                                         alt="<?php echo htmlspecialchars($send['file_name']); ?>"
+                                         style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                                </div>
+                                <div class="image-info">
+                                    <h4><i class="fas fa-image"></i> <?php echo htmlspecialchars($send['file_name']); ?></h4>
+                                    <p><strong>Size:</strong> <?php echo number_format($send['file_size']); ?> bytes</p>
+                                    <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type']); ?></p>
+                                    <!-- Download button for image -->
+                                    <div class="download-actions">
+                                        <a href="download.php?send=<?php echo $send['access_token']; ?>" class="btn btn-download">
+                                            <i class="fas fa-download"></i> Download Image
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <!-- Non-image file or file stored on disk - show download link -->
+                            <div class="file-download">
+                                <div style="text-align: center; margin-bottom: 1.5rem;">
+                                    <i class="fas fa-file-alt" style="font-size: 4rem; color: #3b82f6; margin-bottom: 1rem;"></i>
+                                </div>
+                                <div class="file-info">
+                                    <h4><i class="fas fa-paperclip"></i> <?php echo htmlspecialchars($send['file_name'] ?? 'Unknown File'); ?></h4>
+                                    <p><strong>Size:</strong> <?php echo number_format($send['file_size'] ?? 0); ?> bytes</p>
+                                    <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type'] ?? 'Unknown'); ?></p>
+                                    <?php if (!empty($send['storage_type'])): ?>
+                                        <p><strong>Storage:</strong> <?php echo ucfirst($send['storage_type']); ?></p>
+                                    <?php endif; ?>
+                                </div>
+                                <div style="text-align: center; margin-top: 1.5rem;">
+                                    <a href="download.php?send=<?php echo $send['access_token']; ?>" class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1.1rem;">
+                                        <i class="fas fa-download"></i> Download File
+                                    </a>
+                                </div>
+                                <div style="text-align: center; margin-top: 1rem; color: #666; font-size: 0.9rem;">
+                                    <i class="fas fa-info-circle"></i> Click the button above to download your file
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     <?php elseif ($send['type'] === 'credential'): ?>
                         <?php 
                         $credentialData = json_decode($send['content'], true);
@@ -870,45 +964,70 @@ if (empty($access_link)) {
                                 <p>These credentials have been securely shared with you. 
                                    Keep this information secure and do not share it with others.</p>
                             </div></div>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <?php if ($send['storage_type'] === 'blob'): ?>
-                            <!-- Image stored as BLOB - display inline with download option -->
-                            <div class="image-display">
-                                <div class="image-container">
-                                    <img src="view_image.php?send=<?php echo $send['access_token']; ?>" 
-                                         alt="<?php echo htmlspecialchars($send['file_name']); ?>"
-                                         style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                                </div>
-                                <div class="image-info">
-                                    <h4><i class="fas fa-image"></i> <?php echo htmlspecialchars($send['file_name']); ?></h4>
-                                    <p><strong>Size:</strong> <?php echo number_format($send['file_size']); ?> bytes</p>
-                                    <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type']); ?></p>
-                                      <!-- Download button for image -->
-                                    <div class="download-actions">
-                                        <?php 
-                                        // Store access token in session for seamless downloads
-                                        $_SESSION['temp_download_access_' . $send['access_token']] = true;
-                                        ?>
-                                        <a href="download_image.php?send=<?php echo $send['access_token']; ?>" class="btn btn-download">
-                                            <i class="fas fa-download"></i> Download Image
-                                        </a>
+                        <?php endif; ?>                    <?php else: ?>
+                        <?php if ($send['type'] === 'file'): ?>
+                            <?php 
+                            // Store access token in session for seamless downloads
+                            $_SESSION['temp_download_access_' . $send['access_token']] = true;
+                            
+                            // Check if this is an image file
+                            $imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+                            $isImage = in_array(strtolower($send['mime_type']), $imageTypes);
+                            ?>
+                            
+                            <?php if ($isImage && $send['storage_type'] === 'blob'): ?>
+                                <!-- Image file - display inline with download option -->
+                                <div class="image-display">
+                                    <div class="image-container">
+                                        <img src="view_image.php?send=<?php echo $send['access_token']; ?>" 
+                                             alt="<?php echo htmlspecialchars($send['file_name']); ?>"
+                                             style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                                    </div>
+                                    <div class="image-info">
+                                        <h4><i class="fas fa-image"></i> <?php echo htmlspecialchars($send['file_name']); ?></h4>
+                                        <p><strong>Size:</strong> <?php echo number_format($send['file_size']); ?> bytes</p>
+                                        <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type']); ?></p>
+                                        <!-- Download button for image -->
+                                        <div class="download-actions">
+                                            <a href="download.php?send=<?php echo $send['access_token']; ?>" class="btn btn-download">
+                                                <i class="fas fa-download"></i> Download Image
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            <?php else: ?>
+                                <!-- Non-image file or file stored on disk - show download link -->
+                                <div class="file-download">
+                                    <div style="text-align: center; margin-bottom: 1.5rem;">
+                                        <i class="fas fa-file-alt" style="font-size: 4rem; color: #3b82f6; margin-bottom: 1rem;"></i>
+                                    </div>
+                                    <div class="file-info">
+                                        <h4><i class="fas fa-paperclip"></i> <?php echo htmlspecialchars($send['file_name']); ?></h4>
+                                        <p><strong>Size:</strong> <?php echo number_format($send['file_size']); ?> bytes</p>
+                                        <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type']); ?></p>
+                                        <?php if ($send['storage_type']): ?>
+                                            <p><strong>Storage:</strong> <?php echo ucfirst($send['storage_type']); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div style="text-align: center; margin-top: 1.5rem;">
+                                        <a href="download.php?send=<?php echo $send['access_token']; ?>" class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1.1rem;">
+                                            <i class="fas fa-download"></i> Download File
+                                        </a>
+                                    </div>
+                                    <div style="text-align: center; margin-top: 1rem; color: #666; font-size: 0.9rem;">
+                                        <i class="fas fa-info-circle"></i> Click the button above to download your file
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
-                            <!-- File stored as downloadable - show download link -->
+                            <!-- Legacy handling for older sends -->
                             <div class="file-download">
                                 <i class="fas fa-download"></i>
                                 <div class="file-info">
-                                    <h4><?php echo htmlspecialchars($send['file_name']); ?></h4>
-                                    <p><strong>Size:</strong> <?php echo number_format($send['file_size']); ?> bytes</p>
-                                    <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type']); ?></p>
+                                    <h4><?php echo htmlspecialchars($send['file_name'] ?? 'Unknown File'); ?></h4>
+                                    <p><strong>Size:</strong> <?php echo number_format($send['file_size'] ?? 0); ?> bytes</p>
+                                    <p><strong>Type:</strong> <?php echo htmlspecialchars($send['mime_type'] ?? 'Unknown'); ?></p>
                                 </div>
-                                <?php 
-                                // Store access token in session for seamless downloads
-                                $_SESSION['temp_download_access_' . $send['access_token']] = true;
-                                ?>
                                 <a href="download.php?send=<?php echo $send['access_token']; ?>" class="btn">
                                     <i class="fas fa-download"></i> Download File
                                 </a>

@@ -49,55 +49,91 @@ try {
             http_response_code(400);
             die($result['message']);
         }
-    }
-      $send = $result['send'];
+    }      $send = $result['send'];
     
     if ($send['type'] !== 'file') {
         http_response_code(400);
         die('This send is not a file');
     }
     
-    // Check if this is a BLOB-stored image
+    // Handle both BLOB-stored files and file-path files
     if ($send['storage_type'] === 'blob') {
-        http_response_code(400);
-        die('This file is an image. Please view it directly in the browser.');
+        // File is stored as BLOB in database
+        $db = new Database();
+        $sql = "SELECT file_data, mime_type, file_name, file_size FROM sends WHERE access_token = :token";
+        $fileData = $db->fetchOne($sql, ['token' => $accessLink]);
+        
+        if (!$fileData || !$fileData['file_data']) {
+            http_response_code(404);
+            die('File data not found in database');
+        }
+        
+        $fileName = $fileData['file_name'] ?: 'download';
+        $fileSize = strlen($fileData['file_data']);
+        $mimeType = $fileData['mime_type'] ?: 'application/octet-stream';
+        $cleanFileName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileName);
+        
+        // Set headers for download
+        header('Content-Type: ' . $mimeType);
+        header('Content-Disposition: attachment; filename="' . $cleanFileName . '"');
+        header('Content-Length: ' . $fileSize);
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        // Clear any output buffers
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Clean up session flag after successful download
+        if (isset($_SESSION[$sessionKey])) {
+            unset($_SESSION[$sessionKey]);
+        }
+        
+        // Output file data directly from database
+        echo $fileData['file_data'];
+        exit;
+        
+    } else {
+        // Legacy: File stored on filesystem
+        $filePath = $send['file_path'];
+        
+        if (!$filePath || !file_exists($filePath)) {
+            http_response_code(404);
+            die('File not found on server: ' . ($filePath ?: 'No file path specified'));
+        }
+        
+        // Get file info - original filename is stored in file_name, not content
+        $fileName = $send['file_name'] ?: 'download';
+        $fileSize = filesize($filePath);
+        $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
+        
+        // Clean filename for download
+        $cleanFileName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileName);
+        
+        // Set headers for download
+        header('Content-Type: ' . $mimeType);
+        header('Content-Disposition: attachment; filename="' . $cleanFileName . '"');
+        header('Content-Length: ' . $fileSize);
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        // Clear any output buffers
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Clean up session flag after successful download
+        if (isset($_SESSION[$sessionKey])) {
+            unset($_SESSION[$sessionKey]);
+        }
+        
+        // Output file
+        readfile($filePath);
+        exit;
     }
-    
-    $filePath = $send['file_path'];
-    
-    if (!file_exists($filePath)) {
-        http_response_code(404);
-        die('File not found on server: ' . $filePath);
-    }
-    
-    // Get file info - original filename is stored in file_name, not content
-    $fileName = $send['file_name'] ?: 'download'; // Use file_name field
-    $fileSize = filesize($filePath);
-    $mimeType = mime_content_type($filePath) ?: 'application/octet-stream';
-    
-    // Clean filename for download
-    $cleanFileName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileName);
-    
-    // Set headers for download
-    header('Content-Type: ' . $mimeType);
-    header('Content-Disposition: attachment; filename="' . $cleanFileName . '"');
-    header('Content-Length: ' . $fileSize);
-    header('Cache-Control: no-cache, must-revalidate');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-      // Clear any output buffers
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    
-    // Clean up session flag after successful download
-    if (isset($_SESSION[$sessionKey])) {
-        unset($_SESSION[$sessionKey]);
-    }
-    
-    // Output file
-    readfile($filePath);
-    exit;
     
 } catch (Exception $e) {
     http_response_code(500);
