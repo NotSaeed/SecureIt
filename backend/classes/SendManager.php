@@ -572,21 +572,30 @@ class SendManager {
             throw $e;
         }
     }
-    
-    /**
+      /**
      * Get the password for a send (for the owner to view)
      */
     public function getSendPassword($sendId, $userId) {
         try {
-            $sql = "SELECT access_password FROM sends WHERE id = :id AND user_id = :user_id";
+            $sql = "SELECT access_password, password_hash FROM sends WHERE id = :id AND user_id = :user_id";
             $result = $this->db->fetchOne($sql, ['id' => $sendId, 'user_id' => $userId]);
             
-            if (!$result || empty($result['access_password'])) {
+            if (!$result) {
                 return null;
             }
             
-            // Decrypt the password for display to the owner
-            return $this->encryptionHelper->decrypt($result['access_password']);
+            // If we have the encrypted password, return it
+            if (!empty($result['access_password'])) {
+                return $this->encryptionHelper->decrypt($result['access_password']);
+            }
+            
+            // If we only have a password hash (legacy sends), return a special message
+            if (!empty($result['password_hash'])) {
+                return 'LEGACY_PASSWORD_PROTECTED';
+            }
+            
+            // No password set
+            return null;
             
         } catch (Exception $e) {
             error_log("SendManager::getSendPassword error: " . $e->getMessage());

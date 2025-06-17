@@ -3775,6 +3775,160 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                 opacity: 1;
             }
         }
+        /* Enhanced Quick Send Actions */
+        .send-quick-actions-container {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e5e7eb;
+        }
+
+        .send-quick-actions-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .send-quick-actions-header h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .send-quick-actions-header p {
+            color: var(--gray);
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .send-quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .send-action-card {
+            background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
+            border: 2px solid #e5e7eb;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .send-action-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+
+        .send-action-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .send-action-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-color: var(--primary);
+        }
+
+        .send-action-card.primary::before {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+
+        .send-action-card.secondary::before {
+            background: linear-gradient(135deg, #6b7280, #374151);
+        }
+
+        .send-action-card.success::before {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .action-icon {
+            flex-shrink: 0;
+            width: 3rem;
+            height: 3rem;
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: white;
+            background: linear-gradient(135deg, var(--primary), #1d4ed8);
+        }
+
+        .send-action-card.secondary .action-icon {
+            background: linear-gradient(135deg, #6b7280, #374151);
+        }
+
+        .send-action-card.success .action-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .action-content {
+            flex: 1;
+        }
+
+        .action-content h4 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--dark);
+            margin: 0 0 0.25rem 0;
+        }
+
+        .action-content p {
+            font-size: 0.875rem;
+            color: var(--gray);
+            margin: 0;
+            line-height: 1.4;
+        }
+
+        .action-arrow {
+            flex-shrink: 0;
+            color: var(--gray);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .send-action-card:hover .action-arrow {
+            color: var(--primary);
+            transform: translateX(4px);
+        }
+
+        @media (max-width: 768px) {
+            .send-quick-actions-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .send-action-card {
+                padding: 1.25rem;
+            }
+            
+            .action-icon {
+                width: 2.5rem;
+                height: 2.5rem;
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -4433,23 +4587,51 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     Expired
                                 </div>
                             </div>
-                        </div>
-
-                        <!-- Quick Actions -->
-                        <div class="card" style="background: linear-gradient(135deg, #f8fafc, #e2e8f0); border: none; margin-bottom: 2rem;">
-                            <div class="card-body" style="text-align: center; padding: 2rem;">
-                                <h3 style="margin-bottom: 1rem; color: var(--dark);">Quick Send Actions</h3>
-                                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                                    <button class="btn btn-primary" onclick="switchSendTab('secure')" style="min-width: 180px;">
-                                        <i class="fas fa-shield-check"></i> Create Secure Send
-                                    </button>
-                                    <button class="btn btn-secondary" onclick="switchSendTab('credential')" style="min-width: 180px;">
-                                        <i class="fas fa-key"></i> Share Credentials
-                                    </button>
-                                    <button class="btn btn-success" onclick="switchSendTab('manage')" style="min-width: 180px;">
-                                        <i class="fas fa-tasks"></i> Manage Sends
-                                    </button>
-                                </div>
+                        </div>                        <!-- Quick Actions -->
+                        <div class="send-quick-actions-container">
+                            <div class="send-quick-actions-header">
+                                <h3><i class="fas fa-rocket"></i> Quick Send Actions</h3>
+                                <p>Choose an action to get started with secure sending</p>
+                            </div>
+                            <div class="send-quick-actions-grid">
+                                <button class="send-action-card primary" onclick="switchSendTab('secure')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-shield-check"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Create Secure Send</h4>
+                                        <p>Share encrypted files or text with advanced security controls</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
+                                
+                                <button class="send-action-card secondary" onclick="switchSendTab('credential')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-key"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Share Credentials</h4>
+                                        <p>Temporarily share vault items with secure access links</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
+                                
+                                <button class="send-action-card success" onclick="switchSendTab('manage')">
+                                    <div class="action-icon">
+                                        <i class="fas fa-tasks"></i>
+                                    </div>
+                                    <div class="action-content">
+                                        <h4>Manage Sends</h4>
+                                        <p>Monitor and control all your active secure sends</p>
+                                    </div>
+                                    <div class="action-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                </button>
                             </div>
                         </div>
 
@@ -8078,13 +8260,16 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                     },
                     body: 'action=get_send_password&send_id=' + sendId
                 })
-                .then(response => response.json())
-                .then(data => {
+                .then(response => response.json())                .then(data => {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                     
                     if (data.success && data.password) {
-                        showPasswordModal(data.password);
+                        if (data.password === 'LEGACY_PASSWORD_PROTECTED') {
+                            showNotification('This send is password protected, but the password cannot be retrieved for security reasons. This affects sends created before the latest update.', 'info');
+                        } else {
+                            showPasswordModal(data.password);
+                        }
                     } else {
                         showNotification(data.message || 'No password set for this send', 'info');
                     }
