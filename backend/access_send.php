@@ -442,6 +442,76 @@ if (empty($access_link)) {
             margin: 0.25rem 0;
             font-size: 0.9rem;
         }
+        
+        /* Multiple Credentials Styles */
+        .multi-credential {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        
+        .credentials-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .credential-item {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #dee2e6;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+        }
+        
+        .credential-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .item-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .item-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        
+        .item-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #2d3748;
+            flex: 1;
+        }
+        
+        .item-type {
+            background: #e2e8f0;
+            color: #4a5568;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .note-content {
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -490,11 +560,168 @@ if (empty($access_link)) {
                     <?php if ($send['type'] === 'text'): ?>
                         <div class="send-text">
                             <?php echo htmlspecialchars($send['content']); ?>
-                        </div>
-                    <?php elseif ($send['type'] === 'credential'): ?>
+                        </div>                    <?php elseif ($send['type'] === 'credential'): ?>
                         <?php 
                         $credentialData = json_decode($send['content'], true);
                         if ($credentialData):
+                            // Check if this is a multi-item credential delivery
+                            if (isset($credentialData['items']) && is_array($credentialData['items'])):
+                                // Multiple items
+                                $items = $credentialData['items'];
+                                $itemCount = count($items);
+                        ?>
+                        <div class="credential-display multi-credential">
+                            <div class="credential-header">
+                                <i class="fas fa-key"></i> 
+                                <strong>Credential Package (<?php echo $itemCount; ?> items)</strong>
+                            </div>
+                            
+                            <?php if (!empty($credentialData['message'])): ?>
+                                <div class="credential-message">
+                                    <i class="fas fa-comment"></i>
+                                    <p><?php echo htmlspecialchars($credentialData['message']); ?></p>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="credentials-container">
+                                <?php foreach ($items as $index => $item): ?>
+                                    <div class="credential-item" id="item-<?php echo $index; ?>">
+                                        <div class="item-header">
+                                            <div class="item-number"><?php echo $index + 1; ?></div>
+                                            <h3>
+                                                <?php 
+                                                $itemIcon = '';
+                                                switch ($item['item_type']) {
+                                                    case 'login': $itemIcon = '🔐'; break;
+                                                    case 'card': $itemIcon = '💳'; break;
+                                                    case 'identity': $itemIcon = '🆔'; break;
+                                                    case 'note': $itemIcon = '📝'; break;
+                                                    default: $itemIcon = '🔑';
+                                                }
+                                                echo $itemIcon . ' ' . htmlspecialchars($item['item_name']);
+                                                ?>
+                                            </h3>
+                                            <span class="item-type"><?php echo ucfirst($item['item_type']); ?></span>
+                                        </div>
+                                        
+                                        <div class="credential-data">
+                                            <?php 
+                                            $itemData = $item['data']; // Already decrypted in SendManager
+                                            if ($item['item_type'] === 'login'):
+                                            ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-user"></i> Username:</label>
+                                                    <div class="credential-value">
+                                                        <span id="username-value-<?php echo $index; ?>"><?php echo htmlspecialchars($itemData['username'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('username-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-lock"></i> Password:</label>
+                                                    <div class="credential-value">
+                                                        <span id="password-value-<?php echo $index; ?>" class="password-hidden"><?php echo str_repeat('•', strlen($itemData['password'] ?? '')); ?></span>
+                                                        <span id="password-revealed-<?php echo $index; ?>" style="display: none;"><?php echo htmlspecialchars($itemData['password'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="togglePasswordItem(<?php echo $index; ?>)" class="toggle-btn">
+                                                            <i class="fas fa-eye" id="password-toggle-icon-<?php echo $index; ?>"></i>
+                                                        </button>
+                                                        <button type="button" onclick="copyToClipboard('password-revealed-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <?php if (!empty($item['website_url'])): ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-globe"></i> Website:</label>
+                                                    <div class="credential-value">
+                                                        <a href="<?php echo htmlspecialchars($item['website_url']); ?>" target="_blank" rel="noopener noreferrer">
+                                                            <?php echo htmlspecialchars($item['website_url']); ?>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($itemData['notes'])): ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-sticky-note"></i> Notes:</label>
+                                                    <div class="credential-value">
+                                                        <span id="notes-value-<?php echo $index; ?>"><?php echo htmlspecialchars($itemData['notes']); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('notes-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <?php endif; ?>
+                                            <?php elseif ($item['item_type'] === 'card'): ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-user"></i> Cardholder Name:</label>
+                                                    <div class="credential-value">
+                                                        <span id="cardholder-value-<?php echo $index; ?>"><?php echo htmlspecialchars($itemData['cardholder_name'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('cardholder-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-credit-card"></i> Card Number:</label>
+                                                    <div class="credential-value">
+                                                        <span id="cardnumber-value-<?php echo $index; ?>"><?php echo htmlspecialchars($itemData['card_number'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('cardnumber-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-calendar"></i> Expiry Date:</label>
+                                                    <div class="credential-value">
+                                                        <span id="expiry-value-<?php echo $index; ?>"><?php echo htmlspecialchars($itemData['expiry_date'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('expiry-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-lock"></i> CVV:</label>
+                                                    <div class="credential-value">
+                                                        <span id="cvv-value-<?php echo $index; ?>" class="password-hidden"><?php echo str_repeat('•', strlen($itemData['cvv'] ?? '')); ?></span>
+                                                        <span id="cvv-revealed-<?php echo $index; ?>" style="display: none;"><?php echo htmlspecialchars($itemData['cvv'] ?? 'N/A'); ?></span>
+                                                        <button type="button" onclick="toggleCVVItem(<?php echo $index; ?>)" class="toggle-btn">
+                                                            <i class="fas fa-eye" id="cvv-toggle-icon-<?php echo $index; ?>"></i>
+                                                        </button>
+                                                        <button type="button" onclick="copyToClipboard('cvv-revealed-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            <?php elseif ($item['item_type'] === 'note'): ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-sticky-note"></i> Note Content:</label>
+                                                    <div class="credential-value note-content">
+                                                        <span id="note-content-<?php echo $index; ?>"><?php echo nl2br(htmlspecialchars($itemData['note_content'] ?? 'N/A')); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('note-content-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            <?php else: ?>
+                                                <div class="credential-field">
+                                                    <label><i class="fas fa-info-circle"></i> Content:</label>
+                                                    <div class="credential-value">
+                                                        <span id="content-value-<?php echo $index; ?>"><?php echo htmlspecialchars(json_encode($itemData, JSON_PRETTY_PRINT)); ?></span>
+                                                        <button type="button" onclick="copyToClipboard('content-value-<?php echo $index; ?>')" class="copy-btn">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php else:
+                            // Single item (legacy format)
+                            $itemData = json_decode($credentialData['data'], true);
                         ?>
                         <div class="credential-display">
                             <div class="credential-header">
@@ -511,13 +738,40 @@ if (empty($access_link)) {
                             <?php endif; ?>
                             
                             <div class="credential-data">
-                                <?php 
-                                $itemData = json_decode($credentialData['data'], true);
-                                if ($credentialData['item_type'] === 'login'):
-                                ?>
+                                <?php if ($credentialData['item_type'] === 'login'): ?>
                                     <div class="credential-field">
                                         <label><i class="fas fa-user"></i> Username:</label>
                                         <div class="credential-value">
+                                            <span id="username-value"><?php echo htmlspecialchars($itemData['username'] ?? 'N/A'); ?></span>
+                                            <button type="button" onclick="copyToClipboard('username-value')" class="copy-btn">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="credential-field">
+                                        <label><i class="fas fa-lock"></i> Password:</label>
+                                        <div class="credential-value">
+                                            <span id="password-value" class="password-hidden"><?php echo str_repeat('•', strlen($itemData['password'] ?? '')); ?></span>
+                                            <span id="password-revealed" style="display: none;"><?php echo htmlspecialchars($itemData['password'] ?? 'N/A'); ?></span>
+                                            <button type="button" onclick="togglePassword()" class="toggle-btn">
+                                                <i class="fas fa-eye" id="password-toggle-icon"></i>
+                                            </button>
+                                            <button type="button" onclick="copyToClipboard('password-revealed')" class="copy-btn">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <?php if (!empty($itemData['notes'])): ?>
+                                    <div class="credential-field">
+                                        <label><i class="fas fa-sticky-note"></i> Notes:</label>
+                                        <div class="credential-value">
+                                            <span id="notes-value"><?php echo htmlspecialchars($itemData['notes']); ?></span>
+                                            <button type="button" onclick="copyToClipboard('notes-value')" class="copy-btn">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
                                             <span id="username-value"><?php echo htmlspecialchars($itemData['username'] ?? 'N/A'); ?></span>
                                             <button type="button" onclick="copyToClipboard('username-value')" class="copy-btn">
                                                 <i class="fas fa-copy"></i>
@@ -762,6 +1016,39 @@ if (empty($access_link)) {
             setTimeout(() => {
                 document.body.removeChild(feedback);
             }, 2000);        }
+        
+        // Functions for multiple credential items
+        function togglePasswordItem(index) {
+            const hiddenSpan = document.getElementById('password-value-' + index);
+            const revealedSpan = document.getElementById('password-revealed-' + index);
+            const icon = document.getElementById('password-toggle-icon-' + index);
+            
+            if (hiddenSpan.style.display === 'none') {
+                hiddenSpan.style.display = 'inline';
+                revealedSpan.style.display = 'none';
+                icon.className = 'fas fa-eye';
+            } else {
+                hiddenSpan.style.display = 'none';
+                revealedSpan.style.display = 'inline';
+                icon.className = 'fas fa-eye-slash';
+            }
+        }
+        
+        function toggleCVVItem(index) {
+            const hiddenSpan = document.getElementById('cvv-value-' + index);
+            const revealedSpan = document.getElementById('cvv-revealed-' + index);
+            const icon = document.getElementById('cvv-toggle-icon-' + index);
+            
+            if (hiddenSpan.style.display === 'none') {
+                hiddenSpan.style.display = 'inline';
+                revealedSpan.style.display = 'none';
+                icon.className = 'fas fa-eye';
+            } else {
+                hiddenSpan.style.display = 'none';
+                revealedSpan.style.display = 'inline';
+                icon.className = 'fas fa-eye-slash';
+            }
+        }
     </script>
 </body>
 </html>

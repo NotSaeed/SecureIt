@@ -275,8 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             break;
-            
-        case 'create_credential_delivery':
+              case 'create_credential_delivery':
             if ($isLoggedIn) {
                 try {
                     $sendManager = new SendManager();
@@ -288,20 +287,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!filter_var($_POST['recipient_email'], FILTER_VALIDATE_EMAIL)) {
                         throw new Exception('Please enter a valid email address');
                     }
-                    if (empty($_POST['vault_item_id'])) {
-                        throw new Exception('Please select a vault item for credential delivery');
+                    
+                    // Determine selection mode and get vault items
+                    $selectionMode = $_POST['selection_mode'] ?? 'single';
+                    $vaultItemIds = [];
+                    
+                    switch ($selectionMode) {
+                        case 'single':
+                            if (empty($_POST['vault_item_id'])) {
+                                throw new Exception('Please select a vault item for credential delivery');
+                            }
+                            $vaultItemIds = [$_POST['vault_item_id']];
+                            break;
+                            
+                        case 'multiple':
+                            if (empty($_POST['vault_items']) || !is_array($_POST['vault_items'])) {
+                                throw new Exception('Please select at least one vault item for credential delivery');
+                            }
+                            $vaultItemIds = $_POST['vault_items'];
+                            break;
+                            
+                        case 'all':
+                            // Get all user's vault items
+                            $vault = new Vault();
+                            $allItems = $vault->getUserItems($_SESSION['user_id']);
+                            if (empty($allItems)) {
+                                throw new Exception('No vault items found to share');
+                            }
+                            $vaultItemIds = array_column($allItems, 'id');
+                            break;
+                            
+                        default:
+                            throw new Exception('Invalid selection mode');
                     }
                       // Build options array
                     $options = [
                         'message' => trim($_POST['message'] ?? ''),
                         'access_password' => !empty($_POST['access_password']) ? $_POST['access_password'] : null,
                         'expiry_hours' => (int)($_POST['expiry_hours'] ?? 24), // Default 24 hours for credential delivery
-                        'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null
+                        'max_views' => !empty($_POST['max_views']) ? (int)$_POST['max_views'] : null,
+                        'selection_mode' => $selectionMode
                     ];
                     
-                    $result = $sendManager->createCredentialDelivery(
+                    $result = $sendManager->createMultiCredentialDelivery(
                         $_SESSION['user_id'],
-                        $_POST['vault_item_id'],
+                        $vaultItemIds,
                         $_POST['recipient_email'],
                         $options
                     );
@@ -4333,40 +4363,115 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     <div class="card-body">
                                         <form method="POST" id="credentialDeliveryForm" class="enhanced-form">
                                             <input type="hidden" name="action" value="create_credential_delivery">
-                                            
-                                            <div class="form-section">
-                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Item</h4>
+                                              <div class="form-section">
+                                                <h4 class="section-title"><i class="fas fa-key"></i> Select Vault Items</h4>
                                                 <div class="form-group">
-                                                    <label for="vault_item_id" class="enhanced-label">
-                                                        <i class="fas fa-search"></i> Choose Item to Share
+                                                    <label class="enhanced-label">
+                                                        <i class="fas fa-clipboard-check"></i> Selection Mode
                                                     </label>
-                                                    <select id="vault_item_id" name="vault_item_id" class="enhanced-input" required>
-                                                        <option value="">Select a vault item...</option>
-                                                        <?php if ($isLoggedIn): ?>
-                                                            <?php
-                                                            try {
-                                                                $vault = new Vault();
-                                                                $allItems = $vault->getUserItems($_SESSION['user_id']);
-                                                                foreach ($allItems as $item):
-                                                                    $itemIcon = '';
-                                                                    switch ($item['item_type']) {
-                                                                        case 'login': $itemIcon = '🔐'; break;
-                                                                        case 'card': $itemIcon = '💳'; break;
-                                                                        case 'identity': $itemIcon = '🆔'; break;
-                                                                        case 'note': $itemIcon = '📝'; break;
-                                                                        default: $itemIcon = '🔑';
-                                                                    }
-                                                            ?>
-                                                                <option value="<?= $item['id'] ?>" data-type="<?= $item['item_type'] ?>">
-                                                                    <?= $itemIcon ?> <?= htmlspecialchars($item['item_name']) ?> (<?= ucfirst($item['item_type']) ?>)
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                            <?php } catch (Exception $e) { ?>
-                                                                <option value="">Error loading vault items</option>
-                                                            <?php } ?>
-                                                        <?php endif; ?>
-                                                    </select>
-                                                    <small class="form-help">Select which vault item you want to share temporarily</small>
+                                                    <div class="selection-mode-tabs">
+                                                        <input type="radio" id="single_item" name="selection_mode" value="single" checked>
+                                                        <label for="single_item" class="mode-tab">
+                                                            <i class="fas fa-file"></i> Single Item
+                                                        </label>
+                                                        <input type="radio" id="multiple_items" name="selection_mode" value="multiple">
+                                                        <label for="multiple_items" class="mode-tab">
+                                                            <i class="fas fa-list"></i> Multiple Items
+                                                        </label>
+                                                        <input type="radio" id="all_items" name="selection_mode" value="all">
+                                                        <label for="all_items" class="mode-tab">
+                                                            <i class="fas fa-th"></i> All Items
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Single Item Selection -->
+                                                <div id="single_selection" class="selection-section">
+                                                    <div class="form-group">
+                                                        <label for="vault_item_id" class="enhanced-label">
+                                                            <i class="fas fa-search"></i> Choose Item to Share
+                                                        </label>
+                                                        <select id="vault_item_id" name="vault_item_id" class="enhanced-input">
+                                                            <option value="">Select a vault item...</option>
+                                                            <?php if ($isLoggedIn): ?>
+                                                                <?php
+                                                                try {
+                                                                    $vault = new Vault();
+                                                                    $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                    foreach ($allItems as $item):
+                                                                        $itemIcon = '';
+                                                                        switch ($item['item_type']) {
+                                                                            case 'login': $itemIcon = '🔐'; break;
+                                                                            case 'card': $itemIcon = '💳'; break;
+                                                                            case 'identity': $itemIcon = '🆔'; break;
+                                                                            case 'note': $itemIcon = '📝'; break;
+                                                                            default: $itemIcon = '🔑';
+                                                                        }
+                                                                ?>
+                                                                    <option value="<?= $item['id'] ?>" data-type="<?= $item['item_type'] ?>">
+                                                                        <?= $itemIcon ?> <?= htmlspecialchars($item['item_name']) ?> (<?= ucfirst($item['item_type']) ?>)
+                                                                    </option>
+                                                                <?php endforeach; ?>
+                                                                <?php } catch (Exception $e) { ?>
+                                                                    <option value="">Error loading vault items</option>
+                                                                <?php } ?>
+                                                            <?php endif; ?>
+                                                        </select>
+                                                        <small class="form-help">Select which vault item you want to share temporarily</small>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Multiple Items Selection -->
+                                                <div id="multiple_selection" class="selection-section" style="display: none;">
+                                                    <div class="form-group">
+                                                        <label class="enhanced-label">
+                                                            <i class="fas fa-check-square"></i> Choose Items to Share
+                                                        </label>
+                                                        <div class="items-checklist">
+                                                            <?php if ($isLoggedIn): ?>
+                                                                <?php
+                                                                try {
+                                                                    $vault = new Vault();
+                                                                    $allItems = $vault->getUserItems($_SESSION['user_id']);
+                                                                    foreach ($allItems as $item):
+                                                                        $itemIcon = '';
+                                                                        switch ($item['item_type']) {
+                                                                            case 'login': $itemIcon = '🔐'; break;
+                                                                            case 'card': $itemIcon = '💳'; break;
+                                                                            case 'identity': $itemIcon = '🆔'; break;
+                                                                            case 'note': $itemIcon = '📝'; break;
+                                                                            default: $itemIcon = '🔑';
+                                                                        }
+                                                                ?>
+                                                                    <div class="item-checkbox">
+                                                                        <input type="checkbox" id="item_<?= $item['id'] ?>" name="vault_items[]" value="<?= $item['id'] ?>" class="enhanced-checkbox">
+                                                                        <label for="item_<?= $item['id'] ?>" class="item-label">
+                                                                            <span class="item-icon"><?= $itemIcon ?></span>
+                                                                            <span class="item-name"><?= htmlspecialchars($item['item_name']) ?></span>
+                                                                            <span class="item-type">(<?= ucfirst($item['item_type']) ?>)</span>
+                                                                        </label>
+                                                                    </div>
+                                                                <?php endforeach; ?>
+                                                                <?php } catch (Exception $e) { ?>
+                                                                    <div class="error-message">Error loading vault items</div>
+                                                                <?php } ?>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <small class="form-help">Select multiple vault items to share in one delivery</small>
+                                                    </div>
+                                                </div>
+
+                                                <!-- All Items Selection -->
+                                                <div id="all_selection" class="selection-section" style="display: none;">
+                                                    <div class="form-group">
+                                                        <div class="info-box">
+                                                            <i class="fas fa-info-circle"></i>
+                                                            <div>
+                                                                <strong>Share All Vault Items</strong>
+                                                                <p>This will share all items in your vault with the recipient. Use with caution and only with trusted individuals.</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 
                                                 <div class="form-group">
@@ -5772,8 +5877,7 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
             if (window.location.search.includes('section=send')) {
                 initializeSendSection();
                 initializeDragAndDrop();
-                
-                // Initialize credential delivery form
+                  // Initialize credential delivery form
                 const credentialMessageTextarea = document.getElementById('credential_message');
                 if (credentialMessageTextarea) {
                     credentialMessageTextarea.addEventListener('input', updateCredentialMessageCounter);
@@ -5788,7 +5892,22 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                             passwordSection.style.display = this.checked ? 'block' : 'none';
                         }
                     });
-                }                
+                }
+
+                // Initialize selection mode handling
+                const selectionModeRadios = document.querySelectorAll('input[name="selection_mode"]');
+                selectionModeRadios.forEach(radio => {
+                    radio.addEventListener('change', handleSelectionModeChange);
+                });
+                
+                // Initialize multiple item checkboxes
+                const multipleCheckboxes = document.querySelectorAll('input[name="vault_items[]"]');
+                multipleCheckboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', handleCheckboxChange);
+                });
+                
+                // Initial setup
+                handleSelectionModeChange();
             }
             
             // Initialize text counter for secure send

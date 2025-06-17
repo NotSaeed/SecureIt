@@ -443,5 +443,127 @@ class SendManager {
             error_log("SendManager::createCredentialDelivery - " . $e->getMessage());
             throw $e;
         }
-    }}
+    }
+        /**
+     * Create a credential delivery send for sharing multiple vault items
+     */
+    public function createMultiCredentialDelivery($userId, $vaultItemIds, $recipientEmail, $options = []) {
+        try {
+            // Generate unique access token
+            $accessToken = $this->generateAccessToken();
+            
+            // Calculate expiration based on hours
+            $expiryHours = $options['expiry_hours'] ?? 24;
+            $expirationDate = date('Y-m-d H:i:s', strtotime("+{$expiryHours} hours"));
+            
+            // Get vault items data
+            $vault = new Vault();
+            $vaultItems = [];
+            $itemNames = [];
+            
+            foreach ($vaultItemIds as $itemId) {
+                $vaultItem = $vault->getItem($itemId, $userId);
+                if (!$vaultItem) {
+                    throw new Exception("Vault item with ID {$itemId} not found or access denied");
+                }
+                
+                // Decrypt the vault item data for proper storage
+                $decryptedData = $this->encryptionHelper->decrypt($vaultItem['encrypted_data']);
+                $itemData = json_decode($decryptedData, true);
+                
+                $vaultItems[] = [
+                    'id' => $vaultItem['id'],
+                    'item_name' => $vaultItem['item_name'],
+                    'item_type' => $vaultItem['item_type'],
+                    'data' => $itemData, // Store decrypted data for proper display
+                    'website_url' => $vaultItem['website_url'] ?? null
+                ];
+                
+                $itemNames[] = $vaultItem['item_name'];
+            }
+            
+            if (empty($vaultItems)) {
+                throw new Exception('No valid vault items found to share');
+            }
+            
+            // Prepare credential content
+            $credentialContent = json_encode([
+                'items' => $vaultItems,
+                'recipient_email' => $recipientEmail,
+                'message' => $options['message'] ?? null,
+                'selection_mode' => $options['selection_mode'] ?? 'multiple'
+            ]);
+            
+            // Create descriptive name
+            $itemCount = count($vaultItems);
+            if ($itemCount === 1) {
+                $deliveryName = 'Credential: ' . $vaultItems[0]['item_name'];
+            } elseif ($options['selection_mode'] === 'all') {
+                $deliveryName = "All Vault Items ({$itemCount} items)";
+            } else {
+                $deliveryName = "Multiple Credentials ({$itemCount} items)";
+            }
+            
+            // Prepare data for database
+            $sendData = [
+                'user_id' => $userId,
+                'type' => 'credential',
+                'name' => $deliveryName,
+                'access_token' => $accessToken,
+                'expires_at' => $expirationDate,
+                'max_views' => $options['max_views'] ?? null,
+                'password_hash' => null,
+                'metadata' => json_encode([
+                    'recipient_email' => $recipientEmail,
+                    'vault_item_ids' => $vaultItemIds,
+                    'selection_mode' => $options['selection_mode'] ?? 'multiple',
+                    'item_count' => $itemCount,
+                    'item_names' => $itemNames
+                ])
+            ];
+            
+            // Hash password if provided
+            if (!empty($options['access_password'])) {
+                $sendData['password_hash'] = password_hash($options['access_password'], PASSWORD_DEFAULT);
+            }
+            
+            // Encrypt the credential content
+            $encryptedContent = $this->encryptionHelper->encrypt($credentialContent);
+            $sendData['content'] = $encryptedContent;
+            
+            // Insert into database
+            $sql = "INSERT INTO sends (user_id, type, name, access_token, expires_at, max_views, password_hash, metadata, content, view_count) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+            
+            $this->db->query($sql, [
+                $sendData['user_id'],
+                $sendData['type'],
+                $sendData['name'],
+                $sendData['access_token'],
+                $sendData['expires_at'],
+                $sendData['max_views'],
+                $sendData['password_hash'],
+                $sendData['metadata'],
+                $sendData['content']
+            ]);
+            
+            $sendId = $this->db->lastInsertId();
+            
+            if (!$sendId) {
+                throw new Exception('Failed to create credential delivery');
+            }
+            
+            return [
+                'id' => $sendId,
+                'access_link' => $accessToken,
+                'expires_at' => $expirationDate,
+                'recipient_email' => $recipientEmail,
+                'item_count' => $itemCount
+            ];
+              } catch (Exception $e) {
+            error_log("SendManager::createMultiCredentialDelivery - " . $e->getMessage());
+            throw $e;
+        }
+    }
+}
 ?>
