@@ -274,8 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: ' . $_SERVER['PHP_SELF'] . '?section=send');                    exit();
                 }            }
             break;
-            
-        case 'get_send_password':
+              case 'get_send_password':
             if ($isLoggedIn && isset($_POST['send_id'])) {
                 try {
                     $sendManager = new SendManager();
@@ -283,7 +282,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     header('Content-Type: application/json');
                     if ($password !== null) {
-                        echo json_encode(['success' => true, 'password' => $password]);
+                        if ($password === 'LEGACY_PASSWORD_PROTECTED') {
+                            echo json_encode([
+                                'success' => false, 
+                                'message' => 'This send is password protected, but the password cannot be retrieved for security reasons. This affects sends created before the latest update.',
+                                'isLegacy' => true
+                            ]);
+                        } else {
+                            echo json_encode(['success' => true, 'password' => $password]);
+                        }
                     } else {
                         echo json_encode(['success' => false, 'message' => 'Password not found or no password set']);
                     }
@@ -293,6 +300,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     echo json_encode(['success' => false, 'message' => 'Error retrieving password: ' . $e->getMessage()]);
                     exit();
                 }
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Invalid request or not logged in']);
+                exit();
             }
             break;
               case 'create_credential_delivery':
@@ -4633,20 +4644,8 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                                     </div>
                                 </button>
                             </div>
-                        </div>
-
-                        <!-- Send Container -->
-                        <div class="send-container"><!-- Send Tabs -->                            <div class="send-tabs">
-                                <button class="send-tab-button active" data-tab="secure" onclick="switchSendTab('secure')">
-                                    <i class="fas fa-shield-check"></i> Secure Send
-                                </button>
-                                <button class="send-tab-button" data-tab="credential" onclick="switchSendTab('credential')">
-                                    <i class="fas fa-clipboard-list"></i> Credential Delivery
-                                </button>
-                                <button class="send-tab-button" data-tab="manage" onclick="switchSendTab('manage')">
-                                    <i class="fas fa-tasks"></i> Manage Sends
-                                </button>                            </div>
-
+                        </div>                        <!-- Send Container -->
+                        <div class="send-container">
                             <!-- Secure Send Tab -->
                             <div id="secureTab" class="send-tab-content active">
                                 <div class="card enhanced-card">
@@ -8265,11 +8264,9 @@ $currentSection = $_GET['section'] ?? ($isLoggedIn ? 'dashboard' : 'home');
                     btn.disabled = false;
                     
                     if (data.success && data.password) {
-                        if (data.password === 'LEGACY_PASSWORD_PROTECTED') {
-                            showNotification('This send is password protected, but the password cannot be retrieved for security reasons. This affects sends created before the latest update.', 'info');
-                        } else {
-                            showPasswordModal(data.password);
-                        }
+                        showPasswordModal(data.password);
+                    } else if (data.isLegacy) {
+                        showNotification(data.message, 'warning');
                     } else {
                         showNotification(data.message || 'No password set for this send', 'info');
                     }
